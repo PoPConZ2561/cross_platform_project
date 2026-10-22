@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "cross_platform_project",
+  "outputfilename": "cross_platform_project",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run generate",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Surasuk Chaithanin",
+    "email": "your-email@msu.ac.th"
+  }
+}
