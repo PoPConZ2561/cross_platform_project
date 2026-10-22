@@ -20,6 +20,7 @@
   </section>
 
   <h2>{{ heading }}</h2>
+  <p v-if="!current && actionError" class="err">{{ actionError }}</p>
   <p v-if="loading" class="empty">กำลังโหลด…</p>
   <ImageGrid v-else :items="photos" :empty-text="emptyText" @open="current = $event" />
 
@@ -28,11 +29,27 @@
       <img :src="imageUrl(current.id, false)" :alt="current.description || current.fileName" />
       <div class="info">
         <h2>{{ current.fileName }}</h2>
-        <p>{{ current.description || 'ยังไม่มีคำอธิบาย' }}</p>
-        <div class="chips">
+        <p v-if="!editing">{{ current.description || 'ยังไม่มีคำอธิบาย' }}</p>
+        <div v-if="!editing" class="chips">
           <button v-for="t in current.tags" :key="t" class="chip" style="border:0;cursor:pointer" @click="jumpToTag(t)">{{ t }}</button>
         </div>
-        <button class="ghost" @click="current = null">ปิด</button>
+        <form v-if="editing" class="edit-form" @submit.prevent="saveImage">
+          <label>คำอธิบาย
+            <textarea v-model="editDescription" rows="3" />
+          </label>
+          <label>Tag (คั่นด้วยจุลภาค)
+            <input v-model="editTags" type="text" />
+          </label>
+          <p v-if="actionError" class="err">{{ actionError }}</p>
+          <button type="submit" :disabled="saving">{{ saving ? 'กำลังบันทึก…' : 'บันทึก' }}</button>
+          <button type="button" class="ghost" :disabled="saving" @click="editing = false">ยกเลิก</button>
+        </form>
+        <p v-if="!editing && actionError" class="err">{{ actionError }}</p>
+        <div v-if="!editing" class="row">
+          <button class="ghost" @click="beginEdit">แก้ไขข้อมูล</button>
+          <button class="ghost" @click="removeImage">ลบรูป</button>
+          <button class="ghost" @click="current = null">ปิด</button>
+        </div>
       </div>
     </div>
   </div>
@@ -40,7 +57,7 @@
 
 <script setup lang="ts">
 import type { PhotoItem, TagCount } from '~/composables/useBackend'
-const { listImages, searchByTag, searchByDescription, tagCloud, imageUrl } = useBackend()
+const { listImages, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, imageUrl } = useBackend()
 
 const mode = ref<'tag' | 'desc'>('tag')
 const tags = ref<TagCount[]>([])
@@ -50,6 +67,11 @@ const query = ref('')
 const loading = ref(false)
 const current = ref<PhotoItem | null>(null)
 const searched = ref(false)
+const editing = ref(false)
+const saving = ref(false)
+const actionError = ref('')
+const editDescription = ref('')
+const editTags = ref('')
 
 const heading = computed(() =>
   mode.value === 'tag' && selectedTag.value ? `รูปที่มี Tag “${selectedTag.value}” (${photos.value.length})`
@@ -70,7 +92,7 @@ async function pickTag(name: string) {
   await load(() => searchByTag(name))
 }
 async function jumpToTag(name: string) {
-  current.value = null; mode.value = 'tag'
+  current.value = null; editing.value = false; mode.value = 'tag'
   await pickTag(name)
 }
 async function searchDesc() {
@@ -80,8 +102,61 @@ async function searchDesc() {
   await load(() => searchByDescription(q))
 }
 
-onMounted(async () => {
+function beginEdit() {
+  if (!current.value) return
+  actionError.value = ''
+  editDescription.value = current.value.description
+  editTags.value = current.value.tags.join(', ')
+  editing.value = true
+}
+
+async function refreshResults() {
   tags.value = await tagCloud()
-  await load(listImages)
+  if (selectedTag.value) {
+    await load(() => searchByTag(selectedTag.value))
+  } else if (mode.value === 'desc' && searched.value && query.value.trim()) {
+    await load(() => searchByDescription(query.value.trim()))
+  } else {
+    await load(listImages)
+  }
+}
+
+async function saveImage() {
+  if (!current.value) return
+  saving.value = true
+  actionError.value = ''
+  try {
+    const tags = [...new Set(editTags.value.split(',').map(tag => tag.trim()).filter(Boolean))]
+    await updateImage(current.value.id, editDescription.value, tags)
+    current.value.description = editDescription.value
+    current.value.tags = tags
+    editing.value = false
+    await refreshResults()
+  } catch (error: unknown) {
+    actionError.value = `บันทึกข้อมูลไม่สำเร็จ: ${String(error)}`
+  } finally {
+    saving.value = false
+  }
+}
+
+async function removeImage() {
+  if (!current.value || !window.confirm(`ต้องการลบ ${current.value.fileName} และไฟล์สำรองหรือไม่?`)) return
+  actionError.value = ''
+  try {
+    await deleteImage(current.value.id)
+    current.value = null
+    editing.value = false
+    await refreshResults()
+  } catch (error: unknown) {
+    actionError.value = `ลบรูปไม่สำเร็จ: ${String(error)}`
+  }
+}
+
+onMounted(async () => {
+  try {
+    await refreshResults()
+  } catch (error: unknown) {
+    actionError.value = `โหลดคลังรูปไม่สำเร็จ: ${String(error)}`
+  }
 })
 </script>

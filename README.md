@@ -1,19 +1,37 @@
-# README
+# Photo Backup
 
-## About
+Wails desktop app for copying photos from a flash drive or phone, cataloguing them
+in SQLite, and searching the collection by description or tag.
 
-This is the official Wails Vanilla template.
+## Backend
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+- Go + Wails v2 provide the desktop API and folder picker.
+- GORM with SQLite stores backup records and many-to-many tags in
+  `backup_history.db` under the current user's configuration folder
+  (`%AppData%\PhotoBackup` on Windows and `~/Library/Application Support/PhotoBackup`
+  on macOS).
+- Photo files are copied into the selected destination, retaining their relative
+  folder structure. JPEG, PNG, and GIF files are analyzed for dimensions, hashed
+  with SHA-256, and skipped when their content has already been backed up.
+- The library supports listing, tag/description search, metadata editing, and
+  deletion of both the catalog record and its backed-up file.
+- Image data is served through the Wails asset server at `/image/{id}`; add
+  `?thumb=1` for a 400-by-300 maximum JPEG thumbnail.
+
+## Wails API
+
+`SelectFolder`, `StartBackup`, `ListImages`, `SearchByTag`,
+`SearchByDescription`, `TagCloud`, `UpdateImage`, and `DeleteImage` are exposed
+to the frontend. Backup progress is emitted as the `backup:progress` event.
+
+The browser-only Nuxt mode uses mock data; use `wails dev` to exercise the Go
+backend and native folder picker.
 
 ## Live Development
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+Run `wails dev` in the project directory. This starts the Vite server with hot
+reload and exposes the Wails Go bindings to the frontend.
 
 ## Building
 
-To build a redistributable, production mode package, use `wails build`.
+Run `wails build` to create a redistributable desktop application.

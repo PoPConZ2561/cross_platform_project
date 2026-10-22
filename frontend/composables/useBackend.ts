@@ -10,7 +10,7 @@ export interface PhotoItem {
 }
 export interface TagCount { name: string; count: number }
 export interface Progress { done: number; total: number; skipped: number; current: string }
-export interface BackupResult { copied: number; skipped: number; failed: number }
+export interface BackupResult { copied: number; skipped: number; failed: number; errors: string[] }
 
 const win = () => (typeof window !== 'undefined' ? (window as any) : {})
 const app = () => win().go?.main?.App
@@ -51,7 +51,7 @@ export function useBackend() {
       await sleep(80)
       mockEmit({ done: i, total, skipped: Math.floor(i / 10), current: `IMG_${2000 + i}.jpg` })
     }
-    return { copied: 36, skipped: 4, failed: 0 }
+    return { copied: 36, skipped: 4, failed: 0, errors: [] }
   }
 
   let mockListeners: ((p: Progress) => void)[] = []
@@ -87,10 +87,25 @@ export function useBackend() {
     return [...m].map(([name, count]) => ({ name, count }))
   }
 
+  async function updateImage(id: number, description: string, tags: string[]): Promise<void> {
+    if (isWails) return app().UpdateImage(id, description, tags)
+    const photo = mockPhotos.find(p => p.id === id)
+    if (photo) {
+      photo.description = description
+      photo.tags = [...new Set(tags.map(t => t.trim()).filter(Boolean))]
+    }
+  }
+
+  async function deleteImage(id: number): Promise<void> {
+    if (isWails) return app().DeleteImage(id)
+    const index = mockPhotos.findIndex(p => p.id === id)
+    if (index >= 0) mockPhotos.splice(index, 1)
+  }
+
   /** URL รูป: Wails ให้ AssetServer Handler ฝั่ง Go เสิร์ฟที่ /image/{id}?thumb=1 */
   function imageUrl(id: number, thumb = true): string {
     return isWails ? `/image/${id}${thumb ? '?thumb=1' : ''}` : mockUrl(id)
   }
 
-  return { isWails, pickFolder, startBackup, onProgress, listImages, searchByTag, searchByDescription, tagCloud, imageUrl }
+  return { isWails, pickFolder, startBackup, onProgress, listImages, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, imageUrl }
 }

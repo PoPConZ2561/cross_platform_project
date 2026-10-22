@@ -38,6 +38,9 @@
       <div><span>{{ result.skipped }}</span><small>ข้าม (ซ้ำ)</small></div>
       <div><span :class="{ err: result.failed }">{{ result.failed }}</span><small>ผิดพลาด</small></div>
     </div>
+    <ul v-if="result?.errors.length" class="err" style="margin-top:1rem">
+      <li v-for="item in result.errors" :key="item">{{ item }}</li>
+    </ul>
     <p v-if="error" class="err" style="margin-top:1rem">{{ error }}</p>
   </section>
 </template>
