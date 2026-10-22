@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -52,6 +53,45 @@ func TestImageHandlerServesOriginalAndThumbnail(t *testing.T) {
 	}
 	if decoded.Bounds().Dx() != 12 || decoded.Bounds().Dy() != 8 {
 		t.Fatalf("thumbnail dimensions = %v; want 12x8", decoded.Bounds())
+	}
+}
+
+func TestImageMiddlewareHandlesImagesBeforeFrontendFallback(t *testing.T) {
+	root := t.TempDir()
+	imagePath := filepath.Join(root, "photo.jpg")
+	writeJPEG(t, imagePath)
+
+	db, err := repository.InitDatabase(filepath.Join(root, "database"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	repo := repository.NewBackupRepository(db)
+	if err := repo.Create(&model.BackupRecord{
+		FileName: "photo.jpg", DestPath: imagePath, FileHash: "middleware-test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{db: db, repo: repo, backup: service.NewBackupService(repo)}
+
+	frontendFallback := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("<html>frontend fallback</html>"))
+	})
+	handler := app.ImageMiddleware()(frontendFallback)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest("GET", "/image/1?thumb=1", nil))
+
+	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("image middleware response = status %d, content type %q; want JPEG, not frontend fallback", response.Code, response.Header().Get("Content-Type"))
+	}
+	if _, _, err := image.Decode(response.Body); err != nil {
+		t.Fatalf("image middleware returned invalid image data: %v", err)
 	}
 }
 

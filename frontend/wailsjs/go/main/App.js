@@ -14,6 +14,10 @@ export function ImageHandler() {
   return window['go']['main']['App']['ImageHandler']();
 }
 
+export function ImageMiddleware() {
+  return window['go']['main']['App']['ImageMiddleware']();
+}
+
 export function ListImages() {
   return window['go']['main']['App']['ListImages']();
 }

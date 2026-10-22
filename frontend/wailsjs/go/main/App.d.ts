@@ -9,6 +9,8 @@ export function Greet(arg1:string):Promise<string>;
 
 export function ImageHandler():Promise<http.Handler>;
 
+export function ImageMiddleware():Promise<any>;
+
 export function ListImages():Promise<Array<model.PhotoItem>>;
 
 export function SearchByDescription(arg1:string):Promise<Array<model.PhotoItem>>;

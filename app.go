@@ -197,6 +197,19 @@ func (a *App) ImageHandler() http.Handler {
 	})
 }
 
+func (a *App) ImageMiddleware() func(http.Handler) http.Handler {
+	imageHandler := a.ImageHandler()
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			if request.URL.Path == "/image" || strings.HasPrefix(request.URL.Path, "/image/") {
+				imageHandler.ServeHTTP(w, request)
+				return
+			}
+			next.ServeHTTP(w, request)
+		})
+	}
+}
+
 func (a *App) serveThumbnail(w http.ResponseWriter, path string) {
 	file, err := os.Open(path)
 	if err != nil {
