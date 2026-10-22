@@ -3,8 +3,10 @@
   <p class="sub">เลือกโฟลเดอร์ใน flash drive หรือโทรศัพท์ แล้วเลือกที่เก็บรูปบนเครื่อง</p>
 
   <section class="panel">
-    <h2>โฟลเดอร์ต้นทาง</h2>
+    <h2>รูปภาพต้นทาง หรือ โฟลเดอร์ต้นทาง</h2>
     <div class="row">
+      <button class="ghost" :disabled="running" @click="chooseSrc">เลือกรูปภาพ</button>
+      <p>หรือ</p>
       <button class="ghost" :disabled="running" @click="chooseSrc">เลือกโฟลเดอร์</button>
       <p class="path">{{ src || 'ยังไม่ได้เลือก' }}</p>
     </div>
