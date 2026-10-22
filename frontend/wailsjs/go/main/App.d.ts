@@ -19,7 +19,11 @@ export function SearchByTag(arg1:string):Promise<Array<model.PhotoItem>>;
 
 export function SelectFolder(arg1:string):Promise<string>;
 
+export function SelectImages():Promise<Array<string>>;
+
 export function StartBackup(arg1:string,arg2:string):Promise<model.BackupResult>;
+
+export function StartBackupFiles(arg1:Array<string>,arg2:string):Promise<model.BackupResult>;
 
 export function TagCloud():Promise<Array<model.TagCount>>;
 

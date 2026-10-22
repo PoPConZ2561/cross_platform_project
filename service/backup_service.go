@@ -35,6 +35,71 @@ func (s *BackupService) Run(src, dst string, progress func(model.BackupProgress)
 	if err != nil {
 		return model.BackupResult{}, err
 	}
+	relativePaths := make(map[string]string, len(files))
+	for _, path := range files {
+		relative, err := filepath.Rel(source, path)
+		if err != nil {
+			return model.BackupResult{}, fmt.Errorf("resolve source image path: %w", err)
+		}
+		relativePaths[path] = relative
+	}
+	return s.runFiles(destination, files, relativePaths, progress)
+}
+
+func (s *BackupService) RunSelected(files []string, dst string, progress func(model.BackupProgress)) (model.BackupResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(files) == 0 {
+		return model.BackupResult{}, errors.New("select at least one image")
+	}
+	destinationPath := strings.TrimSpace(dst)
+	if destinationPath == "" {
+		return model.BackupResult{}, errors.New("destination folder is required")
+	}
+	destination, err := filepath.Abs(filepath.Clean(destinationPath))
+	if err != nil {
+		return model.BackupResult{}, fmt.Errorf("resolve destination folder: %w", err)
+	}
+	destinationInfo, err := os.Stat(destination)
+	if err != nil {
+		return model.BackupResult{}, fmt.Errorf("open destination folder: %w", err)
+	}
+	if !destinationInfo.IsDir() {
+		return model.BackupResult{}, errors.New("destination path is not a folder")
+	}
+
+	selected := make([]string, 0, len(files))
+	relativePaths := make(map[string]string, len(files))
+	seen := make(map[string]struct{}, len(files))
+	for _, path := range files {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return model.BackupResult{}, errors.New("selected image path is invalid")
+		}
+		path, err = filepath.Abs(filepath.Clean(path))
+		if err != nil {
+			return model.BackupResult{}, fmt.Errorf("resolve selected image path: %w", err)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			return model.BackupResult{}, fmt.Errorf("open selected image %q: %w", path, err)
+		}
+		if !info.Mode().IsRegular() || !isImageFile(path) {
+			return model.BackupResult{}, fmt.Errorf("selected file is not a supported image: %s", path)
+		}
+		key := strings.ToLower(filepath.Clean(path))
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		selected = append(selected, path)
+		relativePaths[path] = filepath.Base(path)
+	}
+	return s.runFiles(destination, selected, relativePaths, progress)
+}
+
+func (s *BackupService) runFiles(destination string, files []string, relativePaths map[string]string, progress func(model.BackupProgress)) (model.BackupResult, error) {
 	result := model.BackupResult{Errors: make([]string, 0)}
 	status := model.BackupProgress{Total: len(files)}
 	if progress != nil {
@@ -42,15 +107,13 @@ func (s *BackupService) Run(src, dst string, progress func(model.BackupProgress)
 	}
 
 	for _, sourcePath := range files {
-		relative, err := filepath.Rel(source, sourcePath)
-		if err != nil {
-			return result, fmt.Errorf("resolve source image path: %w", err)
-		}
+		fileName := filepath.Base(sourcePath)
+		relative := relativePaths[sourcePath]
 		status.Current = relative
 		metadata, analyzeErr := analyzeImage(sourcePath)
 		if analyzeErr != nil {
 			result.Failed++
-			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", relative, analyzeErr))
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", fileName, analyzeErr))
 			status.Done++
 			if progress != nil {
 				progress(status)
@@ -61,7 +124,7 @@ func (s *BackupService) Run(src, dst string, progress func(model.BackupProgress)
 		outputPath, hash, size, copyErr := copyImage(sourcePath, filepath.Join(destination, relative))
 		if copyErr != nil {
 			result.Failed++
-			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", relative, copyErr))
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", fileName, copyErr))
 			status.Done++
 			if progress != nil {
 				progress(status)
@@ -71,14 +134,14 @@ func (s *BackupService) Run(src, dst string, progress func(model.BackupProgress)
 		alreadyBackedUp, err := s.repo.ExistsHash(hash)
 		if err != nil {
 			if removeErr := os.Remove(outputPath); removeErr != nil {
-				return result, fmt.Errorf("check duplicate image %s: %w (also failed to remove temporary copy: %v)", relative, err, removeErr)
+				return result, fmt.Errorf("check duplicate image %s: %w (also failed to remove temporary copy: %v)", fileName, err, removeErr)
 			}
-			return result, fmt.Errorf("check duplicate image %s: %w", relative, err)
+			return result, fmt.Errorf("check duplicate image %s: %w", fileName, err)
 		}
 		if alreadyBackedUp {
 			if err := os.Remove(outputPath); err != nil {
 				result.Failed++
-				result.Errors = append(result.Errors, fmt.Sprintf("%s: remove duplicate temporary copy: %v", relative, err))
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: remove duplicate temporary copy: %v", fileName, err))
 				status.Done++
 				if progress != nil {
 					progress(status)
@@ -95,8 +158,8 @@ func (s *BackupService) Run(src, dst string, progress func(model.BackupProgress)
 		}
 
 		record := model.BackupRecord{
-			FileName:     filepath.Base(sourcePath),
-			OriginalName: filepath.Base(sourcePath),
+			FileName:     fileName,
+			OriginalName: fileName,
 			SourcePath:   sourcePath,
 			DestPath:     outputPath,
 			FileSize:     size,
@@ -110,10 +173,10 @@ func (s *BackupService) Run(src, dst string, progress func(model.BackupProgress)
 		}
 		if err := s.repo.Create(&record); err != nil {
 			if removeErr := os.Remove(outputPath); removeErr != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("%s: remove incomplete backup copy: %v", relative, removeErr))
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: remove incomplete backup copy: %v", fileName, removeErr))
 			}
 			result.Failed++
-			result.Errors = append(result.Errors, fmt.Sprintf("%s: save backup record: %v", relative, err))
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: save backup record: %v", fileName, err))
 			status.Done++
 			if progress != nil {
 				progress(status)
@@ -194,8 +257,7 @@ func imageFiles(root string) ([]string, error) {
 		if entry.IsDir() {
 			return nil
 		}
-		switch strings.ToLower(filepath.Ext(path)) {
-		case ".jpg", ".jpeg", ".png", ".gif":
+		if isImageFile(path) {
 			files = append(files, path)
 		}
 		return nil
@@ -204,6 +266,15 @@ func imageFiles(root string) ([]string, error) {
 		return nil, fmt.Errorf("scan source folder: %w", err)
 	}
 	return files, nil
+}
+
+func isImageFile(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".jpg", ".jpeg", ".png", ".gif":
+		return true
+	default:
+		return false
+	}
 }
 
 func copyImage(sourcePath, targetPath string) (string, string, int64, error) {

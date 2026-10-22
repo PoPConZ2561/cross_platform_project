@@ -5,11 +5,21 @@
   <section class="panel">
     <h2>รูปภาพต้นทาง หรือ โฟลเดอร์ต้นทาง</h2>
     <div class="row">
-      <button class="ghost" :disabled="running" @click="chooseSrc">เลือกรูปภาพ</button>
-      <p>หรือ</p>
+      <button class="ghost" :disabled="running" @click="chooseImages">เลือกรูปภาพ (เลือกได้หลายรูป)</button>
       <button class="ghost" :disabled="running" @click="chooseSrc">เลือกโฟลเดอร์</button>
-      <p class="path">{{ src || 'ยังไม่ได้เลือก' }}</p>
     </div>
+    <p v-if="src" class="path source-selection">{{ src }}</p>
+    <div v-else-if="selectedFiles.length" class="selected-files">
+      <p>เลือกแล้ว {{ selectedFiles.length }} รูป</p>
+      <ul>
+        <li v-for="file in selectedFiles" :key="file">
+          <span class="path">{{ file }}</span>
+          <button class="ghost" :disabled="running" :aria-label="`นำ ${file} ออกจากรายการ`" @click="removeSelectedFile(file)">นำออก</button>
+        </li>
+      </ul>
+      <button class="ghost" :disabled="running" @click="clearSelectedFiles">ล้างรายการรูป</button>
+    </div>
+    <p v-else class="path source-selection">ยังไม่ได้เลือกรูปภาพหรือโฟลเดอร์</p>
   </section>
 
   <section class="panel">
@@ -22,7 +32,7 @@
 
   <section class="panel">
     <div class="row">
-      <button :disabled="!src || !dst || running" @click="run">
+      <button :disabled="(!src && !selectedFiles.length) || !dst || running" @click="run">
         {{ running ? 'กำลังสำรอง…' : 'เริ่มสำรองรูป' }}
       </button>
       <p v-if="running" class="path">{{ progress.current }}</p>
@@ -49,17 +59,42 @@
 
 <script setup lang="ts">
 import type { Progress, BackupResult } from '~/composables/useBackend'
-const { pickFolder, startBackup, onProgress } = useBackend()
+const { pickFolder, pickImages, startBackup, startSelectedBackup, onProgress } = useBackend()
 
 const src = ref(''), dst = ref('')
+const selectedFiles = ref<string[]>([])
 const running = ref(false)
 const error = ref('')
 const result = ref<BackupResult | null>(null)
 const progress = reactive<Progress>({ done: 0, total: 0, skipped: 0, current: '' })
 const percent = computed(() => (progress.total ? Math.round((progress.done / progress.total) * 100) : 0))
 
-async function chooseSrc() { const p = await pickFolder('เลือกโฟลเดอร์ต้นทาง'); if (p) src.value = p }
+async function chooseSrc() {
+  const p = await pickFolder('เลือกโฟลเดอร์ต้นทาง')
+  if (p) {
+    src.value = p
+    selectedFiles.value = []
+  }
+}
 async function chooseDst() { const p = await pickFolder('เลือกโฟลเดอร์ปลายทาง'); if (p) dst.value = p }
+async function chooseImages() {
+  try {
+    const files = await pickImages()
+    if (files.length) {
+      error.value = ''
+      src.value = ''
+      selectedFiles.value = [...new Set([...selectedFiles.value, ...files])]
+    }
+  } catch (e: unknown) {
+    error.value = 'เลือกรูปภาพไม่สำเร็จ: ' + String(e)
+  }
+}
+function removeSelectedFile(file: string) {
+  selectedFiles.value = selectedFiles.value.filter(selected => selected !== file)
+}
+function clearSelectedFiles() {
+  selectedFiles.value = []
+}
 
 let off: (() => void) | undefined
 onMounted(() => { off = onProgress(p => Object.assign(progress, p)) })
@@ -69,9 +104,11 @@ async function run() {
   running.value = true; error.value = ''; result.value = null
   Object.assign(progress, { done: 0, total: 0, skipped: 0, current: '' })
   try {
-    result.value = await startBackup(src.value, dst.value)
-  } catch (e: any) {
-    error.value = 'สำรองรูปไม่สำเร็จ: ' + (e?.message ?? e) + ' — ตรวจสอบว่าอุปกรณ์ยังเชื่อมต่ออยู่ แล้วลองใหม่'
+    result.value = src.value
+      ? await startBackup(src.value, dst.value)
+      : await startSelectedBackup(selectedFiles.value, dst.value)
+  } catch (e: unknown) {
+    error.value = 'สำรองรูปไม่สำเร็จ: ' + String(e) + ' — ตรวจสอบว่าอุปกรณ์ยังเชื่อมต่ออยู่ แล้วลองใหม่'
   } finally {
     running.value = false
   }

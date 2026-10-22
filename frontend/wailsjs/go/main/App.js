@@ -34,8 +34,16 @@ export function SelectFolder(arg1) {
   return window['go']['main']['App']['SelectFolder'](arg1);
 }
 
+export function SelectImages() {
+  return window['go']['main']['App']['SelectImages']();
+}
+
 export function StartBackup(arg1, arg2) {
   return window['go']['main']['App']['StartBackup'](arg1, arg2);
+}
+
+export function StartBackupFiles(arg1, arg2) {
+  return window['go']['main']['App']['StartBackupFiles'](arg1, arg2);
 }
 
 export function TagCloud() {

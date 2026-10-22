@@ -98,7 +98,59 @@ func TestRunRejectsOverlappingFolders(t *testing.T) {
 	}
 }
 
+func TestRunSelectedCopiesOneOrManyImages(t *testing.T) {
+	root := t.TempDir()
+	sourceOne := filepath.Join(root, "first", "photo.jpg")
+	sourceTwo := filepath.Join(root, "second", "photo.jpg")
+	destination := filepath.Join(root, "destination")
+	for _, folder := range []string{filepath.Dir(sourceOne), filepath.Dir(sourceTwo), destination} {
+		if err := os.MkdirAll(folder, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeTestJPEG(t, sourceOne)
+	writeTestJPEGVariant(t, sourceTwo, 80)
+
+	db, err := repository.InitDatabase(filepath.Join(root, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	repo := repository.NewBackupRepository(db)
+	svc := NewBackupService(repo)
+
+	result, err := svc.RunSelected([]string{sourceOne}, destination, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Copied != 1 || result.Failed != 0 {
+		t.Fatalf("single-image backup result = %#v; want one copy", result)
+	}
+
+	result, err = svc.RunSelected([]string{sourceOne, sourceTwo}, destination, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Copied != 1 || result.Skipped != 1 || result.Failed != 0 {
+		t.Fatalf("multi-image backup result = %#v; want one new image and one duplicate", result)
+	}
+
+	records, err := repo.List()
+	if err != nil || len(records) != 2 {
+		t.Fatalf("stored records = %d, %v; want two", len(records), err)
+	}
+}
+
 func writeTestJPEG(t *testing.T, path string) {
+	t.Helper()
+	writeTestJPEGVariant(t, path, 255)
+}
+
+func writeTestJPEGVariant(t *testing.T, path string, red uint8) {
 	t.Helper()
 	file, err := os.Create(path)
 	if err != nil {
@@ -107,7 +159,7 @@ func writeTestJPEG(t *testing.T, path string) {
 	picture := image.NewRGBA(image.Rect(0, 0, 12, 8))
 	for y := 0; y < 8; y++ {
 		for x := 0; x < 12; x++ {
-			picture.Set(x, y, color.RGBA{R: 255, A: 255})
+			picture.Set(x, y, color.RGBA{R: red, A: 255})
 		}
 	}
 	if err := jpeg.Encode(file, picture, nil); err != nil {

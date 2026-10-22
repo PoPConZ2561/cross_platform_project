@@ -42,6 +42,12 @@ export function useBackend() {
     return title.includes('ต้นทาง') ? 'E:\\DCIM' : 'D:\\Backup\\Photos'
   }
 
+  async function pickImages(): Promise<string[]> {
+    if (isWails) return (await app().SelectImages()) ?? []
+    await sleep(200)
+    return ['D:\\Photos\\IMG_1001.jpg']
+  }
+
   /** เริ่ม backup -> Go: StartBackup(src, dst string) BackupResult
    *  ระหว่างทำงาน Go ต้อง runtime.EventsEmit(ctx, "backup:progress", Progress) */
   async function startBackup(src: string, dst: string): Promise<BackupResult> {
@@ -52,6 +58,15 @@ export function useBackend() {
       mockEmit({ done: i, total, skipped: Math.floor(i / 10), current: `IMG_${2000 + i}.jpg` })
     }
     return { copied: 36, skipped: 4, failed: 0, errors: [] }
+  }
+
+  async function startSelectedBackup(files: string[], dst: string): Promise<BackupResult> {
+    if (isWails) return app().StartBackupFiles(files, dst)
+    for (let i = 0; i < files.length; i++) {
+      await sleep(200)
+      mockEmit({ done: i + 1, total: files.length, skipped: 0, current: files[i].split(/[\\/]/).pop() ?? files[i] })
+    }
+    return { copied: files.length, skipped: 0, failed: 0, errors: [] }
   }
 
   let mockListeners: ((p: Progress) => void)[] = []
@@ -107,5 +122,5 @@ export function useBackend() {
     return isWails ? `/image/${id}${thumb ? '?thumb=1' : ''}` : mockUrl(id)
   }
 
-  return { isWails, pickFolder, startBackup, onProgress, listImages, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, imageUrl }
+  return { isWails, pickFolder, pickImages, startBackup, startSelectedBackup, onProgress, listImages, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, imageUrl }
 }

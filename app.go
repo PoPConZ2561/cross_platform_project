@@ -79,11 +79,33 @@ func (a *App) SelectFolder(title string) (string, error) {
 	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: title})
 }
 
+func (a *App) SelectImages() ([]string, error) {
+	if a.ctx == nil {
+		return nil, errors.New("application is not ready")
+	}
+	return runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "เลือกรูปภาพ (เลือกได้หลายรูป)",
+		Filters: []runtime.FileFilter{{
+			DisplayName: "Image Files (*.jpg, *.jpeg, *.png, *.gif)",
+			Pattern:     "*.jpg;*.jpeg;*.png;*.gif",
+		}},
+	})
+}
+
 func (a *App) StartBackup(src, dst string) (model.BackupResult, error) {
 	if err := a.ready(); err != nil {
 		return model.BackupResult{}, err
 	}
 	return a.backup.Run(src, dst, func(progress model.BackupProgress) {
+		runtime.EventsEmit(a.ctx, "backup:progress", progress)
+	})
+}
+
+func (a *App) StartBackupFiles(files []string, dst string) (model.BackupResult, error) {
+	if err := a.ready(); err != nil {
+		return model.BackupResult{}, err
+	}
+	return a.backup.RunSelected(files, dst, func(progress model.BackupProgress) {
 		runtime.EventsEmit(a.ctx, "backup:progress", progress)
 	})
 }
