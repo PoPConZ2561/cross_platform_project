@@ -6,12 +6,12 @@ export function ConfirmDelete(arg1) {
   return window['go']['main']['App']['ConfirmDelete'](arg1);
 }
 
-export function DeleteAllImages() {
-  return window['go']['main']['App']['DeleteAllImages']();
+export function DeleteAllImages(arg1) {
+  return window['go']['main']['App']['DeleteAllImages'](arg1);
 }
 
-export function DeleteImage(arg1) {
-  return window['go']['main']['App']['DeleteImage'](arg1);
+export function DeleteImage(arg1, arg2) {
+  return window['go']['main']['App']['DeleteImage'](arg1, arg2);
 }
 
 export function Greet(arg1) {
@@ -26,16 +26,16 @@ export function ImageMiddleware() {
   return window['go']['main']['App']['ImageMiddleware']();
 }
 
-export function ListImages() {
-  return window['go']['main']['App']['ListImages']();
+export function ListImages(arg1) {
+  return window['go']['main']['App']['ListImages'](arg1);
 }
 
-export function SearchByDescription(arg1) {
-  return window['go']['main']['App']['SearchByDescription'](arg1);
+export function SearchByDescription(arg1, arg2) {
+  return window['go']['main']['App']['SearchByDescription'](arg1, arg2);
 }
 
-export function SearchByTag(arg1) {
-  return window['go']['main']['App']['SearchByTag'](arg1);
+export function SearchByTag(arg1, arg2) {
+  return window['go']['main']['App']['SearchByTag'](arg1, arg2);
 }
 
 export function SelectFolder(arg1) {
@@ -54,10 +54,10 @@ export function StartBackupFiles(arg1, arg2) {
   return window['go']['main']['App']['StartBackupFiles'](arg1, arg2);
 }
 
-export function TagCloud() {
-  return window['go']['main']['App']['TagCloud']();
+export function TagCloud(arg1) {
+  return window['go']['main']['App']['TagCloud'](arg1);
 }
 
-export function UpdateImage(arg1, arg2, arg3) {
-  return window['go']['main']['App']['UpdateImage'](arg1, arg2, arg3);
+export function UpdateImage(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['UpdateImage'](arg1, arg2, arg3, arg4);
 }

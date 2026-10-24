@@ -146,11 +146,55 @@ func TestRunSelectedCopiesOneOrManyImages(t *testing.T) {
 	}
 }
 
+func TestRunCopiesSameImageToDifferentDestinations(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source", "trip.jpg")
+	firstDestination := filepath.Join(root, "backup-one")
+	secondDestination := filepath.Join(root, "backup-two")
+	for _, folder := range []string{filepath.Dir(source), firstDestination, secondDestination} {
+		if err := os.MkdirAll(folder, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeTestJPEG(t, source)
+
+	db, err := repository.InitDatabase(filepath.Join(root, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	svc := NewBackupService(repository.NewBackupRepository(db))
+
+	first, err := svc.RunSelected([]string{source}, firstDestination, nil)
+	if err != nil || first.Copied != 1 || first.Skipped != 0 {
+		t.Fatalf("backup to first destination = %#v, %v; want one copied", first, err)
+	}
+	second, err := svc.RunSelected([]string{source}, secondDestination, nil)
+	if err != nil || second.Copied != 1 || second.Skipped != 0 {
+		t.Fatalf("backup to second destination = %#v, %v; want one copied", second, err)
+	}
+	if _, err := os.Stat(filepath.Join(secondDestination, "trip.jpg")); err != nil {
+		t.Fatalf("image was not copied to second destination: %v", err)
+	}
+
+	repeated, err := svc.RunSelected([]string{source}, secondDestination, nil)
+	if err != nil || repeated.Copied != 0 || repeated.Skipped != 1 {
+		t.Fatalf("repeated backup to second destination = %#v, %v; want one duplicate skipped", repeated, err)
+	}
+}
+
 func TestDeleteAllRemovesBackupFilesAndRecords(t *testing.T) {
 	root := t.TempDir()
 	destination := filepath.Join(root, "destination")
-	if err := os.MkdirAll(destination, 0o755); err != nil {
-		t.Fatal(err)
+	otherDestination := filepath.Join(root, "other-destination")
+	for _, folder := range []string{destination, otherDestination} {
+		if err := os.MkdirAll(folder, 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	db, err := repository.InitDatabase(filepath.Join(root, "data"))
@@ -173,13 +217,21 @@ func TestDeleteAllRemovesBackupFilesAndRecords(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	otherPath := filepath.Join(otherDestination, "keep.jpg")
+	writeTestJPEGVariant(t, otherPath, 180)
+	if err := repo.Create(&model.BackupRecord{
+		FileName: "keep.jpg", DestPath: otherPath, FileHash: "keep",
+		Tags: []model.Tag{{Name: "test"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
 
-	deleted, err := NewBackupService(repo).DeleteAll()
+	deleted, err := NewBackupService(repo).DeleteAllInFolder(destination)
 	if err != nil {
 		t.Fatalf("DeleteAll(): %v", err)
 	}
 	if deleted != 2 {
-		t.Fatalf("DeleteAll() returned %d; want 2", deleted)
+		t.Fatalf("DeleteAllInFolder() returned %d; want 2", deleted)
 	}
 	for _, name := range []string{"one.jpg", "two.jpg"} {
 		if _, err := os.Stat(filepath.Join(destination, name)); !os.IsNotExist(err) {
@@ -187,8 +239,11 @@ func TestDeleteAllRemovesBackupFilesAndRecords(t *testing.T) {
 		}
 	}
 	records, err := repo.List()
-	if err != nil || len(records) != 0 {
-		t.Fatalf("List() after DeleteAll() = %d records, %v; want none", len(records), err)
+	if err != nil || len(records) != 1 || records[0].DestPath != otherPath {
+		t.Fatalf("List() after scoped delete = %#v, %v; want only the other destination record", records, err)
+	}
+	if _, err := os.Stat(otherPath); err != nil {
+		t.Fatalf("backup in another destination was deleted: %v", err)
 	}
 }
 

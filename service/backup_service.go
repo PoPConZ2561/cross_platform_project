@@ -22,11 +22,27 @@ func NewBackupService(repo *repository.BackupRepository) *BackupService {
 	return &BackupService{repo: repo}
 }
 
-func (s *BackupService) DeleteAll() (int, error) {
+func (s *BackupService) DeleteAllInFolder(folder string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	records, err := s.repo.List()
+	folder = strings.TrimSpace(folder)
+	if folder == "" {
+		return 0, errors.New("destination folder is required")
+	}
+	folder, err := filepath.Abs(filepath.Clean(folder))
+	if err != nil {
+		return 0, fmt.Errorf("resolve destination folder: %w", err)
+	}
+	info, err := os.Stat(folder)
+	if err != nil {
+		return 0, fmt.Errorf("open destination folder: %w", err)
+	}
+	if !info.IsDir() {
+		return 0, errors.New("destination path is not a folder")
+	}
+
+	records, err := s.repo.ListInFolder(folder)
 	if err != nil {
 		return 0, fmt.Errorf("list images before deleting all: %w", err)
 	}
@@ -68,7 +84,7 @@ func (s *BackupService) DeleteAll() (int, error) {
 		return 0, fmt.Errorf("some backup files could not be deleted; image records were kept so you can retry: %s", strings.Join(fileErrors, "; "))
 	}
 
-	deleted, err := s.repo.DeleteAll()
+	deleted, err := s.repo.DeleteAllInFolder(folder)
 	if err != nil {
 		return 0, fmt.Errorf("backup files were removed, but deleting image records failed: %w", err)
 	}
@@ -184,7 +200,7 @@ func (s *BackupService) runFiles(destination string, files []string, relativePat
 			}
 			continue
 		}
-		alreadyBackedUp, err := s.repo.ExistsHash(hash)
+		alreadyBackedUp, err := s.repo.ExistsHashInFolder(hash, destination)
 		if err != nil {
 			if removeErr := os.Remove(outputPath); removeErr != nil {
 				return result, fmt.Errorf("check duplicate image %s: %w (also failed to remove temporary copy: %v)", fileName, err, removeErr)
