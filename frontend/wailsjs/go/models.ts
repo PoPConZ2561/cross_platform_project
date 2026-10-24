@@ -4,6 +4,7 @@ export namespace model {
 	    copied: number;
 	    skipped: number;
 	    failed: number;
+	    durationMillis: number;
 	    errors: string[];
 	
 	    static createFrom(source: any = {}) {
@@ -15,6 +16,7 @@ export namespace model {
 	        this.copied = source["copied"];
 	        this.skipped = source["skipped"];
 	        this.failed = source["failed"];
+	        this.durationMillis = source["durationMillis"];
 	        this.errors = source["errors"];
 	    }
 	}

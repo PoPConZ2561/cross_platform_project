@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 type BackupService struct {
@@ -92,6 +93,7 @@ func (s *BackupService) DeleteAllInFolder(folder string) (int, error) {
 }
 
 func (s *BackupService) Run(src, dst string, progress func(model.BackupProgress)) (model.BackupResult, error) {
+	started := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -112,10 +114,11 @@ func (s *BackupService) Run(src, dst string, progress func(model.BackupProgress)
 		}
 		relativePaths[path] = relative
 	}
-	return s.runFiles(destination, files, relativePaths, progress)
+	return s.runFiles(destination, files, relativePaths, progress, started)
 }
 
 func (s *BackupService) RunSelected(files []string, dst string, progress func(model.BackupProgress)) (model.BackupResult, error) {
+	started := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -165,15 +168,22 @@ func (s *BackupService) RunSelected(files []string, dst string, progress func(mo
 		selected = append(selected, path)
 		relativePaths[path] = filepath.Base(path)
 	}
-	return s.runFiles(destination, selected, relativePaths, progress)
+	return s.runFiles(destination, selected, relativePaths, progress, started)
 }
 
-func (s *BackupService) runFiles(destination string, files []string, relativePaths map[string]string, progress func(model.BackupProgress)) (model.BackupResult, error) {
-	result := model.BackupResult{Errors: make([]string, 0)}
+func (s *BackupService) runFiles(destination string, files []string, relativePaths map[string]string, progress func(model.BackupProgress), started time.Time) (result model.BackupResult, err error) {
+	defer func() {
+		result.DurationMillis = time.Since(started).Milliseconds()
+	}()
+	result = model.BackupResult{Errors: make([]string, 0)}
 	status := model.BackupProgress{Total: len(files)}
 	destinationNames, err := destinationFileNames(destination)
 	if err != nil {
 		return result, fmt.Errorf("scan destination folder: %w", err)
+	}
+	databaseNames, databaseHashes, err := s.repo.DuplicateIndexInFolder(destination)
+	if err != nil {
+		return result, fmt.Errorf("load destination duplicate index: %w", err)
 	}
 	if progress != nil {
 		progress(status)
@@ -185,10 +195,7 @@ func (s *BackupService) runFiles(destination string, files []string, relativePat
 		status.Current = relative
 		nameKey := strings.ToLower(fileName)
 		_, existsOnDisk := destinationNames[nameKey]
-		existsInDatabase, err := s.repo.ExistsFileNameInFolder(fileName, destination)
-		if err != nil {
-			return result, fmt.Errorf("check duplicate filename %s: %w", fileName, err)
-		}
+		_, existsInDatabase := databaseNames[nameKey]
 		if existsOnDisk || existsInDatabase {
 			result.Skipped++
 			status.Skipped++
@@ -230,13 +237,7 @@ func (s *BackupService) runFiles(destination string, files []string, relativePat
 			}
 			continue
 		}
-		alreadyBackedUp, err := s.repo.ExistsHashInFolder(hash, destination)
-		if err != nil {
-			if removeErr := os.Remove(outputPath); removeErr != nil {
-				return result, fmt.Errorf("check duplicate image %s: %w (also failed to remove temporary copy: %v)", fileName, err, removeErr)
-			}
-			return result, fmt.Errorf("check duplicate image %s: %w", fileName, err)
-		}
+		_, alreadyBackedUp := databaseHashes[hash]
 		if alreadyBackedUp {
 			if err := os.Remove(outputPath); err != nil {
 				result.Failed++
@@ -284,6 +285,8 @@ func (s *BackupService) runFiles(destination string, files []string, relativePat
 		}
 
 		destinationNames[nameKey] = struct{}{}
+		databaseNames[nameKey] = struct{}{}
+		databaseHashes[hash] = struct{}{}
 		result.Copied++
 		status.Done++
 		if progress != nil {

@@ -100,6 +100,42 @@ func (r *BackupRepository) ExistsFileNameInFolder(fileName, folder string) (bool
 	return false, nil
 }
 
+func (r *BackupRepository) DuplicateIndexInFolder(folder string) (map[string]struct{}, map[string]struct{}, error) {
+	query, err := recordsInFolder(r.db, folder)
+	if err != nil {
+		return nil, nil, err
+	}
+	records := make([]model.BackupRecord, 0)
+	if err := query.Select("file_name", "dest_path", "file_hash").Find(&records).Error; err != nil {
+		return nil, nil, err
+	}
+
+	names := make(map[string]struct{}, len(records))
+	hashes := make(map[string]struct{}, len(records))
+	for _, record := range records {
+		if record.FileName != "" {
+			names[strings.ToLower(record.FileName)] = struct{}{}
+		}
+		if record.DestPath != "" {
+			names[strings.ToLower(filepath.Base(record.DestPath))] = struct{}{}
+		}
+		if record.FileHash == "" || record.DestPath == "" {
+			continue
+		}
+		info, err := os.Stat(record.DestPath)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		if info.Mode().IsRegular() {
+			hashes[record.FileHash] = struct{}{}
+		}
+	}
+	return names, hashes, nil
+}
+
 func (r *BackupRepository) List() ([]model.BackupRecord, error) {
 	records := make([]model.BackupRecord, 0)
 	err := r.db.Preload("Tags").Order("created_at DESC, id DESC").Find(&records).Error

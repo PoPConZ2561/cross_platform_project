@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 )
 
 func TestPathsOverlapAcrossWindowsDrives(t *testing.T) {
@@ -53,12 +54,19 @@ func TestRunCopiesAndSkipsDuplicateImages(t *testing.T) {
 	defer sqlDB.Close()
 	svc := NewBackupService(repository.NewBackupRepository(db))
 
-	first, err := svc.Run(source, destination, nil)
+	first, err := svc.Run(source, destination, func(progress model.BackupProgress) {
+		if progress.Done == progress.Total && progress.Done > 0 {
+			time.Sleep(20 * time.Millisecond)
+		}
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first.Copied != 1 || first.Skipped != 0 || first.Failed != 0 {
 		t.Fatalf("first backup result = %#v; want one copied image", first)
+	}
+	if first.DurationMillis < 10 {
+		t.Fatalf("reported duration = %d ms; want it to include final file processing", first.DurationMillis)
 	}
 	if _, err := os.Stat(filepath.Join(destination, "camera", "trip.jpg")); err != nil {
 		t.Fatalf("image was not copied preserving its folder: %v", err)

@@ -43,8 +43,9 @@ type BackupProgress struct {
 }
 
 type BackupResult struct {
-	Copied  int      `json:"copied"`
-	Skipped int      `json:"skipped"`
-	Failed  int      `json:"failed"`
-	Errors  []string `json:"errors"`
+	Copied         int      `json:"copied"`
+	Skipped        int      `json:"skipped"`
+	Failed         int      `json:"failed"`
+	DurationMillis int64    `json:"durationMillis"`
+	Errors         []string `json:"errors"`
 }

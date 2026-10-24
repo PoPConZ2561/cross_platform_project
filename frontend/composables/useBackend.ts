@@ -10,7 +10,7 @@ export interface PhotoItem {
 }
 export interface TagCount { name: string; count: number }
 export interface Progress { done: number; total: number; skipped: number; current: string }
-export interface BackupResult { copied: number; skipped: number; failed: number; errors: string[] }
+export interface BackupResult { copied: number; skipped: number; failed: number; durationMillis: number; errors: string[] }
 
 const win = () => (typeof window !== 'undefined' ? (window as any) : {})
 const app = () => win().go?.main?.App
@@ -52,21 +52,23 @@ export function useBackend() {
    *  ระหว่างทำงาน Go ต้อง runtime.EventsEmit(ctx, "backup:progress", Progress) */
   async function startBackup(src: string, dst: string): Promise<BackupResult> {
     if (isWails) return app().StartBackup(src, dst)
+    const started = performance.now()
     const total = 40
     for (let i = 1; i <= total; i++) {
       await sleep(80)
       mockEmit({ done: i, total, skipped: Math.floor(i / 10), current: `IMG_${2000 + i}.jpg` })
     }
-    return { copied: 36, skipped: 4, failed: 0, errors: [] }
+    return { copied: 36, skipped: 4, failed: 0, durationMillis: Math.round(performance.now() - started), errors: [] }
   }
 
   async function startSelectedBackup(files: string[], dst: string): Promise<BackupResult> {
     if (isWails) return app().StartBackupFiles(files, dst)
+    const started = performance.now()
     for (let i = 0; i < files.length; i++) {
       await sleep(200)
       mockEmit({ done: i + 1, total: files.length, skipped: 0, current: files[i].split(/[\\/]/).pop() ?? files[i] })
     }
-    return { copied: files.length, skipped: 0, failed: 0, errors: [] }
+    return { copied: files.length, skipped: 0, failed: 0, durationMillis: Math.round(performance.now() - started), errors: [] }
   }
 
   let mockListeners: ((p: Progress) => void)[] = []
