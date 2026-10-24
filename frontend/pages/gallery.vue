@@ -21,25 +21,22 @@
 
   <div class="gallery-heading">
     <h2>{{ heading }}</h2>
-    <button
-      v-if="totalImages > 0"
-      class="danger"
-      :disabled="loading || deletingAll"
-      @click="removeAllImages"
-    >{{ deletingAll ? 'กำลังลบรูปทั้งหมด…' : `ลบรูปทั้งหมด (${totalImages})` }}</button>
+    <button v-if="totalImages > 0" class="danger" :disabled="loading || deletingAll" @click="removeAllImages">{{
+      deletingAll ? 'กำลังลบรูปทั้งหมด…' : `ลบรูปทั้งหมด (${totalImages})` }}</button>
   </div>
   <p v-if="!current && actionError" class="err">{{ actionError }}</p>
   <p v-if="loading" class="empty">กำลังโหลด…</p>
   <ImageGrid v-else :items="photos" :empty-text="emptyText" @open="current = $event" />
 
-  <div v-if="current" class="modal" @click.self="current = null">
+  <div v-if="current" class="modal" @click.self="current = null; confirmingDelete = false">
     <div class="box" role="dialog" aria-modal="true">
       <img :src="imageUrl(current.id, false)" :alt="current.description || current.fileName" />
       <div class="info">
         <h2>{{ current.fileName }}</h2>
         <p v-if="!editing">{{ current.description || 'ยังไม่มีคำอธิบาย' }}</p>
         <div v-if="!editing" class="chips">
-          <button v-for="t in current.tags" :key="t" class="chip" style="border:0;cursor:pointer" @click="jumpToTag(t)">{{ t }}</button>
+          <button v-for="t in current.tags" :key="t" class="chip" style="border:0;cursor:pointer"
+            @click="jumpToTag(t)">{{ t }}</button>
         </div>
         <form v-if="editing" class="edit-form" @submit.prevent="saveImage">
           <label>คำอธิบาย
@@ -55,8 +52,12 @@
         <p v-if="!editing && actionError" class="err">{{ actionError }}</p>
         <div v-if="!editing" class="row">
           <button class="ghost" @click="beginEdit">แก้ไขข้อมูล</button>
-          <button class="ghost" @click="removeImage">ลบรูป</button>
-          <button class="ghost" @click="current = null">ปิด</button>
+          <button v-if="!confirmingDelete" class="ghost" @click="confirmingDelete = true">ลบรูป</button>
+          <template v-else>
+            <button type="button" style="background:#dc2626;color:#fff" @click="removeImage">ยืนยันลบจริง</button>
+            <button type="button" class="ghost" @click="confirmingDelete = false">ยกเลิก</button>
+          </template>
+          <button class="ghost" @click="current = null; confirmingDelete = false">ปิด</button>
         </div>
       </div>
     </div>
@@ -77,6 +78,7 @@ const current = ref<PhotoItem | null>(null)
 const searched = ref(false)
 const editing = ref(false)
 const saving = ref(false)
+const confirmingDelete = ref(false)
 const actionError = ref('')
 const editDescription = ref('')
 const editTags = ref('')
@@ -85,8 +87,8 @@ const deletingAll = ref(false)
 
 const heading = computed(() =>
   mode.value === 'tag' && selectedTag.value ? `รูปที่มี Tag “${selectedTag.value}” (${photos.value.length})`
-  : searched.value ? `ผลการค้นหา (${photos.value.length})`
-  : `รูปทั้งหมด (${photos.value.length})`)
+    : searched.value ? `ผลการค้นหา (${photos.value.length})`
+      : `รูปทั้งหมด (${photos.value.length})`)
 const emptyText = computed(() => searched.value ? 'ไม่พบรูปที่ตรงกับคำค้น ลองใช้คำอื่น' : 'ยังไม่มีรูป ไปที่หน้า “สำรองรูป” เพื่อเริ่มต้น')
 
 async function load(fn: () => Promise<PhotoItem[]>) {
@@ -115,6 +117,7 @@ async function searchDesc() {
 function beginEdit() {
   if (!current.value) return
   actionError.value = ''
+  confirmingDelete.value = false
   editDescription.value = current.value.description
   editTags.value = current.value.tags.join(', ')
   editing.value = true
@@ -152,12 +155,13 @@ async function saveImage() {
 }
 
 async function removeImage() {
-  if (!current.value || !window.confirm(`ต้องการลบ ${current.value.fileName} และไฟล์สำรองหรือไม่?`)) return
+  if (!current.value) return
   actionError.value = ''
   try {
     await deleteImage(current.value.id)
     current.value = null
     editing.value = false
+    confirmingDelete.value = false
     await refreshResults()
   } catch (error: unknown) {
     actionError.value = `ลบรูปไม่สำเร็จ: ${String(error)}`
