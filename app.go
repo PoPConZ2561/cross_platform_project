@@ -305,3 +305,15 @@ func photoItems(records []model.BackupRecord) []model.PhotoItem {
 	}
 	return items
 }
+
+func (a *App) ConfirmDelete(fileName string) (bool, error) {
+	res, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		Type:          runtime.QuestionDialog,
+		Title:         "ยืนยันการลบ",
+		Message:       "ต้องการลบ " + fileName + " และไฟล์สำรองหรือไม่?",
+		Buttons:       []string{"ลบ", "ยกเลิก"},
+		DefaultButton: "ยกเลิก",
+		CancelButton:  "ยกเลิก",
+	})
+	return res == "ลบ", err
+}
