@@ -1,6 +1,6 @@
 module cross_platform_project
 
-go 1.26.0
+go 1.23
 
 require (
 	github.com/glebarez/sqlite v1.11.0
