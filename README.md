@@ -22,7 +22,9 @@ in SQLite, and searching the collection by description or tag.
 - The library supports listing, tag/description search, metadata editing, and
   deletion of both the catalog record and its backed-up file. The gallery
   requires a destination folder and scopes image history, searches, tags, and
-  bulk deletion to that folder and its subfolders.
+  bulk deletion to that folder and its subfolders. When a destination is
+  selected, the app compares its database history with files on disk and
+  reports missing backup files.
 - Image data is served through the Wails asset server at `/image/{id}`; add
   `?thumb=1` for a 400-by-300 maximum JPEG thumbnail.
 
@@ -30,7 +32,7 @@ in SQLite, and searching the collection by description or tag.
 
 `SelectFolder`, `SelectImages`, `StartBackup`, `StartBackupFiles`, `ListImages`,
 `SearchByTag`, `SearchByDescription`, `TagCloud`, `UpdateImage`, `DeleteImage`,
-and `DeleteAllImages` are exposed to the frontend. Gallery history, tag search,
+`DeleteAllImages`, and `CheckDestination` are exposed to the frontend. Gallery history, tag search,
 description search, and bulk deletion all require a destination-folder argument.
 Backup progress is emitted as the `backup:progress` event.
 

@@ -9,6 +9,7 @@ export interface PhotoItem {
   createdAt: string
 }
 export interface TagCount { name: string; count: number }
+export interface MissingFile { fileName: string; path: string }
 export interface Progress { done: number; total: number; skipped: number; current: string }
 export interface BackupResult { copied: number; skipped: number; failed: number; durationMillis: number; errors: string[] }
 
@@ -86,6 +87,10 @@ export function useBackend() {
     if (isWails) return (await app().ListImages(destination)) ?? []
     return mockPhotos
   }
+  async function checkDestination(destination: string): Promise<MissingFile[]> {
+    if (isWails) return (await app().CheckDestination(destination)) ?? []
+    return []
+  }
   /** Go: SearchByTag(tag, destination string) []PhotoItem */
   async function searchByTag(tag: string, destination: string): Promise<PhotoItem[]> {
     if (isWails) return (await app().SearchByTag(tag, destination)) ?? []
@@ -131,5 +136,5 @@ export function useBackend() {
     return isWails ? `/image/${id}${thumb ? '?thumb=1' : ''}` : mockUrl(id)
   }
 
-  return { isWails, pickFolder, pickImages, startBackup, startSelectedBackup, onProgress, listImages, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, deleteAllImages, imageUrl }
+  return { isWails, pickFolder, pickImages, startBackup, startSelectedBackup, onProgress, listImages, checkDestination, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, deleteAllImages, imageUrl }
 }

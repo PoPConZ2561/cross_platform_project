@@ -347,6 +347,49 @@ func TestDeleteAllRemovesBackupFilesAndRecords(t *testing.T) {
 	}
 }
 
+func TestCheckDestinationReportsMissingFilesOnlyForSelectedDestination(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join(root, "destination")
+	nested := filepath.Join(destination, "camera")
+	otherDestination := filepath.Join(root, "destination-archive")
+	for _, folder := range []string{nested, otherDestination} {
+		if err := os.MkdirAll(folder, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	existingPath := filepath.Join(nested, "present.jpg")
+	writeTestJPEG(t, existingPath)
+
+	db, err := repository.InitDatabase(filepath.Join(root, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	repo := repository.NewBackupRepository(db)
+	records := []model.BackupRecord{
+		{FileName: "present.jpg", DestPath: existingPath, FileHash: "present"},
+		{FileName: "missing.jpg", DestPath: filepath.Join(destination, "missing.jpg"), FileHash: "missing"},
+		{FileName: "outside.jpg", DestPath: filepath.Join(otherDestination, "outside.jpg"), FileHash: "outside"},
+	}
+	for index := range records {
+		if err := repo.Create(&records[index]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	missing, err := NewBackupService(repo).CheckDestination(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(missing) != 1 || missing[0].FileName != "missing.jpg" || missing[0].Path != records[1].DestPath {
+		t.Fatalf("CheckDestination() = %#v; want only the missing file in selected destination", missing)
+	}
+}
+
 func writeTestJPEG(t *testing.T, path string) {
 	t.Helper()
 	writeTestJPEGVariant(t, path, 255)

@@ -23,6 +23,55 @@ func NewBackupService(repo *repository.BackupRepository) *BackupService {
 	return &BackupService{repo: repo}
 }
 
+func (s *BackupService) CheckDestination(folder string) ([]model.MissingFile, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	folder = strings.TrimSpace(folder)
+	if folder == "" {
+		return nil, errors.New("destination folder is required")
+	}
+	folder, err := filepath.Abs(filepath.Clean(folder))
+	if err != nil {
+		return nil, fmt.Errorf("resolve destination folder: %w", err)
+	}
+	info, err := os.Stat(folder)
+	if err != nil {
+		return nil, fmt.Errorf("open destination folder: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, errors.New("destination path is not a folder")
+	}
+
+	records, err := s.repo.BackupPathsInFolder(folder)
+	if err != nil {
+		return nil, fmt.Errorf("read destination backup history: %w", err)
+	}
+	missing := make([]model.MissingFile, 0)
+	seen := make(map[string]struct{}, len(records))
+	for _, record := range records {
+		path := strings.TrimSpace(record.DestPath)
+		if path == "" {
+			path = record.FileName
+		}
+		key := strings.ToLower(filepath.Clean(path))
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		fileInfo, err := os.Stat(path)
+		if errors.Is(err, os.ErrNotExist) || err == nil && !fileInfo.Mode().IsRegular() {
+			missing = append(missing, model.MissingFile{FileName: record.FileName, Path: path})
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("check backup file %q: %w", path, err)
+		}
+	}
+	return missing, nil
+}
+
 func (s *BackupService) DeleteAllInFolder(folder string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

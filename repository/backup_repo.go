@@ -152,6 +152,16 @@ func (r *BackupRepository) ListInFolder(folder string) ([]model.BackupRecord, er
 	return records, err
 }
 
+func (r *BackupRepository) BackupPathsInFolder(folder string) ([]model.BackupRecord, error) {
+	query, err := recordsInFolder(r.db, folder)
+	if err != nil {
+		return nil, err
+	}
+	records := make([]model.BackupRecord, 0)
+	err = query.Select("file_name", "dest_path").Find(&records).Error
+	return records, err
+}
+
 func (r *BackupRepository) FindByID(id uint) (model.BackupRecord, error) {
 	var record model.BackupRecord
 	err := r.db.Preload("Tags").First(&record, id).Error

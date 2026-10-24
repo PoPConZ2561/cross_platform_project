@@ -49,3 +49,8 @@ type BackupResult struct {
 	DurationMillis int64    `json:"durationMillis"`
 	Errors         []string `json:"errors"`
 }
+
+type MissingFile struct {
+	FileName string `json:"fileName"`
+	Path     string `json:"path"`
+}

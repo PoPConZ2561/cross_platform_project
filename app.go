@@ -121,6 +121,17 @@ func (a *App) ListImages(destination string) ([]model.PhotoItem, error) {
 	return photoItems(records), nil
 }
 
+func (a *App) CheckDestination(destination string) ([]model.MissingFile, error) {
+	if err := a.ready(); err != nil {
+		return nil, err
+	}
+	missing, err := a.backup.CheckDestination(destination)
+	if err != nil {
+		return nil, fmt.Errorf("check destination folder: %w", err)
+	}
+	return missing, nil
+}
+
 func (a *App) SearchByTag(tag, destination string) ([]model.PhotoItem, error) {
 	if err := a.ready(); err != nil {
 		return nil, err

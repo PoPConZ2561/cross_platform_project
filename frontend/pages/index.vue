@@ -25,9 +25,18 @@
   <section class="panel">
     <h2>โฟลเดอร์ปลายทาง</h2>
     <div class="row">
-      <button class="ghost" :disabled="running" @click="chooseDst">เลือกโฟลเดอร์</button>
+      <button class="ghost" :disabled="running || checkingDestination" @click="chooseDst">เลือกโฟลเดอร์</button>
       <p class="path">{{ dst || 'ยังไม่ได้เลือก' }}</p>
     </div>
+    <p v-if="checkingDestination" class="path">กำลังตรวจสอบประวัติฐานข้อมูลกับไฟล์ในโฟลเดอร์ปลายทาง…</p>
+    <p v-else-if="destinationCheckError" class="err">ตรวจสอบไฟล์ไม่สำเร็จ: {{ destinationCheckError }}</p>
+    <template v-else-if="destinationChecked && missingFiles.length">
+      <p class="err">พบไฟล์สูญหาย {{ missingFiles.length }} ไฟล์ — มีประวัติในฐานข้อมูลแต่ไม่พบไฟล์จริง</p>
+      <ul class="err">
+        <li v-for="file in missingFiles" :key="file.path">{{ file.fileName }} — {{ file.path }}</li>
+      </ul>
+    </template>
+    <p v-else-if="destinationChecked" class="path">ตรวจสอบแล้ว: ไม่พบไฟล์สูญหาย</p>
   </section>
 
   <section class="panel">
@@ -61,8 +70,8 @@
 </template>
 
 <script setup lang="ts">
-import type { Progress, BackupResult } from '~/composables/useBackend'
-const { pickFolder, pickImages, startBackup, startSelectedBackup, onProgress } = useBackend()
+import type { MissingFile, Progress, BackupResult } from '~/composables/useBackend'
+const { pickFolder, pickImages, startBackup, startSelectedBackup, checkDestination, onProgress } = useBackend()
 
 const src = ref(''), dst = ref('')
 const selectedFiles = ref<string[]>([])
@@ -70,6 +79,10 @@ const running = ref(false)
 const error = ref('')
 const result = ref<BackupResult | null>(null)
 const progress = reactive<Progress>({ done: 0, total: 0, skipped: 0, current: '' })
+const missingFiles = ref<MissingFile[]>([])
+const checkingDestination = ref(false)
+const destinationChecked = ref(false)
+const destinationCheckError = ref('')
 const percent = computed(() => (progress.total ? Math.round((progress.done / progress.total) * 100) : 0))
 
 async function chooseSrc() {
@@ -79,7 +92,23 @@ async function chooseSrc() {
     selectedFiles.value = []
   }
 }
-async function chooseDst() { const p = await pickFolder('เลือกโฟลเดอร์ปลายทาง'); if (p) dst.value = p }
+async function chooseDst() {
+  try {
+    const folder = await pickFolder('เลือกโฟลเดอร์ปลายทาง')
+    if (!folder) return
+    dst.value = folder
+    checkingDestination.value = true
+    destinationChecked.value = false
+    destinationCheckError.value = ''
+    missingFiles.value = await checkDestination(folder)
+    destinationChecked.value = true
+  } catch (e: unknown) {
+    destinationCheckError.value = String(e)
+    destinationChecked.value = true
+  } finally {
+    checkingDestination.value = false
+  }
+}
 async function chooseImages() {
   try {
     const files = await pickImages()

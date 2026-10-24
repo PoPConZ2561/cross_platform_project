@@ -16,6 +16,19 @@
   <p v-if="!destination" class="empty">เลือกโฟลเดอร์ปลายทางเพื่อดูประวัติ รูปภาพ และ Tag ของโฟลเดอร์นั้น</p>
 
   <template v-if="destination">
+  <section v-if="checkingMissing || missingFiles.length || missingCheckComplete" class="panel">
+    <h2>ตรวจสอบไฟล์สำรอง</h2>
+    <p v-if="checkingMissing" class="path">กำลังเปรียบเทียบประวัติฐานข้อมูลกับไฟล์ในโฟลเดอร์ปลายทาง…</p>
+    <p v-else-if="missingCheckError" class="err">ตรวจสอบไฟล์ไม่สำเร็จ: {{ missingCheckError }}</p>
+    <template v-else-if="missingFiles.length">
+      <p class="err">พบไฟล์สูญหาย {{ missingFiles.length }} ไฟล์ — มีประวัติในฐานข้อมูลแต่ไม่พบไฟล์จริงในโฟลเดอร์ปลายทาง</p>
+      <ul class="err">
+        <li v-for="file in missingFiles" :key="file.path">{{ file.fileName }} — {{ file.path }}</li>
+      </ul>
+    </template>
+    <p v-else class="path">ตรวจสอบแล้ว: ไม่พบไฟล์สูญหาย</p>
+  </section>
+
   <div class="tabs" role="tablist">
     <button :class="{ on: mode === 'tag' }" @click="setMode('tag')">ค้นหาจาก Tag</button>
     <button :class="{ on: mode === 'desc' }" @click="setMode('desc')">ค้นหาจากคำอธิบาย</button>
@@ -80,8 +93,8 @@
 </template>
 
 <script setup lang="ts">
-import type { PhotoItem, TagCount } from '~/composables/useBackend'
-const { pickFolder, listImages, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, deleteAllImages, imageUrl } = useBackend()
+import type { MissingFile, PhotoItem, TagCount } from '~/composables/useBackend'
+const { pickFolder, listImages, checkDestination, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, deleteAllImages, imageUrl } = useBackend()
 
 const mode = ref<'tag' | 'desc'>('tag')
 const destination = ref('')
@@ -100,6 +113,10 @@ const editDescription = ref('')
 const editTags = ref('')
 const totalImages = ref(0)
 const deletingAll = ref(false)
+const missingFiles = ref<MissingFile[]>([])
+const checkingMissing = ref(false)
+const missingCheckComplete = ref(false)
+const missingCheckError = ref('')
 
 const heading = computed(() =>
   mode.value === 'tag' && selectedTag.value ? `รูปที่มี Tag “${selectedTag.value}” (${photos.value.length})`
@@ -118,7 +135,7 @@ async function chooseDestination() {
     query.value = ''
     searched.value = false
     current.value = null
-    await refreshResults()
+    await refreshResults(true)
   } catch (error: unknown) {
     actionError.value = `เลือกโฟลเดอร์ปลายทางไม่สำเร็จ: ${String(error)}`
   }
@@ -156,12 +173,29 @@ function beginEdit() {
   editing.value = true
 }
 
-async function refreshResults() {
+async function refreshResults(checkFiles = false) {
   if (!destination.value) {
     photos.value = []
     tags.value = []
     totalImages.value = 0
+    missingFiles.value = []
+    missingCheckComplete.value = false
     return
+  }
+  if (checkFiles) {
+    checkingMissing.value = true
+    missingCheckComplete.value = false
+    missingFiles.value = []
+    missingCheckError.value = ''
+    try {
+      missingFiles.value = await checkDestination(destination.value)
+      missingCheckComplete.value = true
+    } catch (error: unknown) {
+      missingCheckError.value = String(error)
+      missingCheckComplete.value = true
+    } finally {
+      checkingMissing.value = false
+    }
   }
   const allImages = await listImages(destination.value)
   totalImages.value = allImages.length
@@ -201,7 +235,7 @@ async function removeImage() {
     current.value = null
     editing.value = false
     confirmingDelete.value = false
-    await refreshResults()
+    await refreshResults(true)
   } catch (error: unknown) {
     actionError.value = `ลบรูปไม่สำเร็จ: ${String(error)}`
   }
@@ -224,7 +258,7 @@ async function removeAllImages() {
     query.value = ''
     searched.value = false
     mode.value = 'tag'
-    await refreshResults()
+    await refreshResults(true)
     actionError.value = `ลบรูปและไฟล์สำรองแล้ว ${deleted} รูป`
   } catch (error: unknown) {
     actionError.value = `ลบรูปทั้งหมดไม่สำเร็จ: ${String(error)}`
@@ -242,7 +276,7 @@ onMounted(async () => {
   destination.value = localStorage.getItem('photo-backup-destination') ?? ''
   if (!destination.value) return
   try {
-    await refreshResults()
+    await refreshResults(true)
   } catch (error: unknown) {
     actionError.value = `โหลดคลังรูปไม่สำเร็จ: ${String(error)}`
   }

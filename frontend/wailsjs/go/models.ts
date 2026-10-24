@@ -20,6 +20,20 @@ export namespace model {
 	        this.errors = source["errors"];
 	    }
 	}
+	export class MissingFile {
+	    fileName: string;
+	    path: string;
+
+	    static createFrom(source: any = {}) {
+	        return new MissingFile(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.fileName = source["fileName"];
+	        this.path = source["path"];
+	    }
+	}
 	export class PhotoItem {
 	    id: number;
 	    fileName: string;
@@ -75,4 +89,3 @@ export namespace model {
 	}
 
 }
-
