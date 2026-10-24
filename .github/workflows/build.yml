@@ -3,7 +3,7 @@ name: Build Windows and macOS Apps
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # กดสั่งรันเองจากหน้าเว็บ GitHub ได้
+  workflow_dispatch:
 
 jobs:
   build:
@@ -27,22 +27,34 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.26.x'
+          check-latest: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+
+      - name: Install and Generate Frontend (Nuxt)
+        working-directory: ./frontend
+        run: |
+          npm install
+          npm run generate
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Build Application
+      - name: Build Wails Application (macOS)
+        if: matrix.os == 'macos-latest'
         env:
           TMPDIR: /tmp
-        run: wails build -clean -platform ${{ matrix.platform }}
+        run: $(go env GOPATH)/bin/wails build -clean -s -platform ${{ matrix.platform }}
 
-      - name: Package macOS .app as ZIP (รักษา Permission ของไฟล์บน Mac)
+      - name: Build Wails Application (Windows)
+        if: matrix.os == 'windows-latest'
+        run: wails build -clean -s -platform ${{ matrix.platform }}
+
+      - name: Package macOS .app as ZIP
         if: matrix.os == 'macos-latest'
         run: |
           cd build/bin
