@@ -102,7 +102,7 @@ func TestRunRejectsOverlappingFolders(t *testing.T) {
 func TestRunSelectedCopiesOneOrManyImages(t *testing.T) {
 	root := t.TempDir()
 	sourceOne := filepath.Join(root, "first", "photo.jpg")
-	sourceTwo := filepath.Join(root, "second", "photo.jpg")
+	sourceTwo := filepath.Join(root, "second", "different.jpg")
 	destination := filepath.Join(root, "destination")
 	for _, folder := range []string{filepath.Dir(sourceOne), filepath.Dir(sourceTwo), destination} {
 		if err := os.MkdirAll(folder, 0o755); err != nil {
@@ -143,6 +143,98 @@ func TestRunSelectedCopiesOneOrManyImages(t *testing.T) {
 	records, err := repo.List()
 	if err != nil || len(records) != 2 {
 		t.Fatalf("stored records = %d, %v; want two", len(records), err)
+	}
+}
+
+func TestRunSelectedSkipsFilenameAlreadyInDestination(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source", "photo.jpg")
+	destination := filepath.Join(root, "destination")
+	for _, folder := range []string{filepath.Dir(source), destination} {
+		if err := os.MkdirAll(folder, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeTestJPEG(t, source)
+	existingPath := filepath.Join(destination, "photo.jpg")
+	writeTestJPEGVariant(t, existingPath, 80)
+	original, err := os.ReadFile(existingPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := repository.InitDatabase(filepath.Join(root, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	repo := repository.NewBackupRepository(db)
+
+	result, err := NewBackupService(repo).RunSelected([]string{source}, destination, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Copied != 0 || result.Skipped != 1 || result.Failed != 0 {
+		t.Fatalf("backup result = %#v; want one skipped file", result)
+	}
+	current, err := os.ReadFile(existingPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(current) != string(original) {
+		t.Fatal("existing destination file was modified")
+	}
+	records, err := repo.List()
+	if err != nil || len(records) != 0 {
+		t.Fatalf("stored records = %d, %v; want no new record", len(records), err)
+	}
+}
+
+func TestRunSelectedSkipsFilenameAlreadyInDatabase(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source", "photo.jpg")
+	destination := filepath.Join(root, "destination")
+	archive := filepath.Join(destination, "archive")
+	for _, folder := range []string{filepath.Dir(source), archive} {
+		if err := os.MkdirAll(folder, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeTestJPEG(t, source)
+	existingRecordPath := filepath.Join(archive, "renamed.jpg")
+	writeTestJPEGVariant(t, existingRecordPath, 80)
+
+	db, err := repository.InitDatabase(filepath.Join(root, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	repo := repository.NewBackupRepository(db)
+	if err := repo.Create(&model.BackupRecord{
+		FileName: "photo.jpg",
+		DestPath: existingRecordPath,
+		FileHash: "existing",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := NewBackupService(repo).RunSelected([]string{source}, destination, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Copied != 0 || result.Skipped != 1 || result.Failed != 0 {
+		t.Fatalf("backup result = %#v; want one skipped file", result)
+	}
+	if _, err := os.Stat(filepath.Join(destination, "photo.jpg")); !os.IsNotExist(err) {
+		t.Fatalf("file was copied despite matching database filename: %v", err)
 	}
 }
 

@@ -171,6 +171,10 @@ func (s *BackupService) RunSelected(files []string, dst string, progress func(mo
 func (s *BackupService) runFiles(destination string, files []string, relativePaths map[string]string, progress func(model.BackupProgress)) (model.BackupResult, error) {
 	result := model.BackupResult{Errors: make([]string, 0)}
 	status := model.BackupProgress{Total: len(files)}
+	destinationNames, err := destinationFileNames(destination)
+	if err != nil {
+		return result, fmt.Errorf("scan destination folder: %w", err)
+	}
 	if progress != nil {
 		progress(status)
 	}
@@ -179,6 +183,22 @@ func (s *BackupService) runFiles(destination string, files []string, relativePat
 		fileName := filepath.Base(sourcePath)
 		relative := relativePaths[sourcePath]
 		status.Current = relative
+		nameKey := strings.ToLower(fileName)
+		_, existsOnDisk := destinationNames[nameKey]
+		existsInDatabase, err := s.repo.ExistsFileNameInFolder(fileName, destination)
+		if err != nil {
+			return result, fmt.Errorf("check duplicate filename %s: %w", fileName, err)
+		}
+		if existsOnDisk || existsInDatabase {
+			result.Skipped++
+			status.Skipped++
+			status.Done++
+			if progress != nil {
+				progress(status)
+			}
+			continue
+		}
+
 		metadata, analyzeErr := analyzeImage(sourcePath)
 		if analyzeErr != nil {
 			result.Failed++
@@ -192,6 +212,16 @@ func (s *BackupService) runFiles(destination string, files []string, relativePat
 
 		outputPath, hash, size, copyErr := copyImage(sourcePath, filepath.Join(destination, relative))
 		if copyErr != nil {
+			if errors.Is(copyErr, os.ErrExist) {
+				destinationNames[nameKey] = struct{}{}
+				result.Skipped++
+				status.Skipped++
+				status.Done++
+				if progress != nil {
+					progress(status)
+				}
+				continue
+			}
 			result.Failed++
 			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", fileName, copyErr))
 			status.Done++
@@ -253,6 +283,7 @@ func (s *BackupService) runFiles(destination string, files []string, relativePat
 			continue
 		}
 
+		destinationNames[nameKey] = struct{}{}
 		result.Copied++
 		status.Done++
 		if progress != nil {
@@ -378,32 +409,57 @@ func copyImage(sourcePath, targetPath string) (string, string, int64, error) {
 	}
 
 	hash := fmt.Sprintf("%x", hasher.Sum(nil))
-	outputPath, err := availablePath(targetPath, hash)
+	output, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return "", "", 0, err
+		if errors.Is(err, os.ErrExist) {
+			return "", "", 0, fmt.Errorf("destination file already exists: %w", err)
+		}
+		return "", "", 0, fmt.Errorf("create destination file: %w", err)
 	}
-	if err := os.Rename(tempPath, outputPath); err != nil {
+	removeOutput := true
+	defer func() {
+		if removeOutput {
+			_ = os.Remove(targetPath)
+		}
+	}()
+	temporary, err := os.Open(tempPath)
+	if err != nil {
+		output.Close()
+		return "", "", 0, fmt.Errorf("open temporary backup: %w", err)
+	}
+	if _, err := io.Copy(output, temporary); err != nil {
+		temporary.Close()
+		output.Close()
 		return "", "", 0, fmt.Errorf("save image backup: %w", err)
 	}
-	return outputPath, hash, size, nil
+	if err := temporary.Close(); err != nil {
+		output.Close()
+		return "", "", 0, fmt.Errorf("close temporary backup: %w", err)
+	}
+	if err := output.Sync(); err != nil {
+		output.Close()
+		return "", "", 0, fmt.Errorf("flush image backup: %w", err)
+	}
+	if err := output.Close(); err != nil {
+		return "", "", 0, fmt.Errorf("close image backup: %w", err)
+	}
+	removeOutput = false
+	return targetPath, hash, size, nil
 }
 
-func availablePath(target, hash string) (string, error) {
-	if _, err := os.Lstat(target); errors.Is(err, os.ErrNotExist) {
-		return target, nil
-	} else if err != nil {
-		return "", fmt.Errorf("check destination file: %w", err)
-	}
-
-	ext := filepath.Ext(target)
-	base := strings.TrimSuffix(target, ext)
-	candidate := fmt.Sprintf("%s-%s%s", base, hash[:12], ext)
-	for suffix := 1; ; suffix++ {
-		if _, err := os.Lstat(candidate); errors.Is(err, os.ErrNotExist) {
-			return candidate, nil
-		} else if err != nil {
-			return "", fmt.Errorf("check destination file: %w", err)
+func destinationFileNames(destination string) (map[string]struct{}, error) {
+	names := make(map[string]struct{})
+	err := filepath.WalkDir(destination, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
-		candidate = fmt.Sprintf("%s-%s-%d%s", base, hash[:12], suffix, ext)
+		if !entry.IsDir() {
+			names[strings.ToLower(entry.Name())] = struct{}{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
+	return names, nil
 }

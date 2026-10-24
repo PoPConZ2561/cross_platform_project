@@ -79,6 +79,27 @@ func (r *BackupRepository) ExistsHashInFolder(hash, folder string) (bool, error)
 	return false, nil
 }
 
+func (r *BackupRepository) ExistsFileNameInFolder(fileName, folder string) (bool, error) {
+	fileName = strings.TrimSpace(fileName)
+	if fileName == "" {
+		return false, nil
+	}
+	query, err := recordsInFolder(r.db, folder)
+	if err != nil {
+		return false, err
+	}
+	records := make([]model.BackupRecord, 0)
+	if err := query.Select("file_name", "dest_path").Find(&records).Error; err != nil {
+		return false, err
+	}
+	for _, record := range records {
+		if strings.EqualFold(record.FileName, fileName) || strings.EqualFold(filepath.Base(record.DestPath), fileName) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (r *BackupRepository) List() ([]model.BackupRecord, error) {
 	records := make([]model.BackupRecord, 0)
 	err := r.db.Preload("Tags").Order("created_at DESC, id DESC").Find(&records).Error
