@@ -2,6 +2,20 @@
   <h1>คลังรูปและค้นหา</h1>
   <p class="sub">ค้นหารูปจาก Tag หรือคำอธิบายภาพ</p>
 
+  <section class="panel destination-panel">
+    <div class="destination-heading">
+      <div>
+        <h2>โฟลเดอร์ปลายทาง</h2>
+        <p class="path">{{ destination || 'กรุณาเลือกโฟลเดอร์ที่ใช้สำรองรูป' }}</p>
+      </div>
+      <button class="ghost" :disabled="loading || deletingAll" @click="chooseDestination">
+        {{ destination ? 'เปลี่ยนโฟลเดอร์' : 'เลือกโฟลเดอร์' }}
+      </button>
+    </div>
+  </section>
+  <p v-if="!destination" class="empty">เลือกโฟลเดอร์ปลายทางเพื่อดูประวัติ รูปภาพ และ Tag ของโฟลเดอร์นั้น</p>
+
+  <template v-if="destination">
   <div class="tabs" role="tablist">
     <button :class="{ on: mode === 'tag' }" @click="setMode('tag')">ค้นหาจาก Tag</button>
     <button :class="{ on: mode === 'desc' }" @click="setMode('desc')">ค้นหาจากคำอธิบาย</button>
@@ -62,13 +76,15 @@
       </div>
     </div>
   </div>
+  </template>
 </template>
 
 <script setup lang="ts">
 import type { PhotoItem, TagCount } from '~/composables/useBackend'
-const { listImages, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, deleteAllImages, imageUrl } = useBackend()
+const { pickFolder, listImages, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, deleteAllImages, imageUrl } = useBackend()
 
 const mode = ref<'tag' | 'desc'>('tag')
+const destination = ref('')
 const tags = ref<TagCount[]>([])
 const photos = ref<PhotoItem[]>([])
 const selectedTag = ref('')
@@ -91,17 +107,34 @@ const heading = computed(() =>
       : `รูปทั้งหมด (${photos.value.length})`)
 const emptyText = computed(() => searched.value ? 'ไม่พบรูปที่ตรงกับคำค้น ลองใช้คำอื่น' : 'ยังไม่มีรูป ไปที่หน้า “สำรองรูป” เพื่อเริ่มต้น')
 
+async function chooseDestination() {
+  actionError.value = ''
+  try {
+    const folder = await pickFolder('เลือกโฟลเดอร์ปลายทาง')
+    if (!folder) return
+    destination.value = folder
+    localStorage.setItem('photo-backup-destination', folder)
+    selectedTag.value = ''
+    query.value = ''
+    searched.value = false
+    current.value = null
+    await refreshResults()
+  } catch (error: unknown) {
+    actionError.value = `เลือกโฟลเดอร์ปลายทางไม่สำเร็จ: ${String(error)}`
+  }
+}
+
 async function load(fn: () => Promise<PhotoItem[]>) {
   loading.value = true
   try { photos.value = await fn() } finally { loading.value = false }
 }
 async function setMode(m: 'tag' | 'desc') {
   mode.value = m; selectedTag.value = ''; query.value = ''; searched.value = false
-  await load(listImages)
+  await load(() => listImages(destination.value))
 }
 async function pickTag(name: string) {
   selectedTag.value = name; searched.value = true
-  await load(() => searchByTag(name))
+  await load(() => searchByTag(name, destination.value))
 }
 async function jumpToTag(name: string) {
   current.value = null; editing.value = false; mode.value = 'tag'
@@ -111,7 +144,7 @@ async function searchDesc() {
   const q = query.value.trim()
   if (!q) return setMode('desc')
   searched.value = true
-  await load(() => searchByDescription(q))
+  await load(() => searchByDescription(q, destination.value))
 }
 
 function beginEdit() {
@@ -124,13 +157,19 @@ function beginEdit() {
 }
 
 async function refreshResults() {
-  const allImages = await listImages()
+  if (!destination.value) {
+    photos.value = []
+    tags.value = []
+    totalImages.value = 0
+    return
+  }
+  const allImages = await listImages(destination.value)
   totalImages.value = allImages.length
-  tags.value = await tagCloud()
+  tags.value = await tagCloud(destination.value)
   if (selectedTag.value) {
-    await load(() => searchByTag(selectedTag.value))
+    await load(() => searchByTag(selectedTag.value, destination.value))
   } else if (mode.value === 'desc' && searched.value && query.value.trim()) {
-    await load(() => searchByDescription(query.value.trim()))
+    await load(() => searchByDescription(query.value.trim(), destination.value))
   } else {
     photos.value = allImages
   }
@@ -142,7 +181,7 @@ async function saveImage() {
   actionError.value = ''
   try {
     const tags = [...new Set(editTags.value.split(',').map(tag => tag.trim()).filter(Boolean))]
-    await updateImage(current.value.id, editDescription.value, tags)
+    await updateImage(current.value.id, editDescription.value, tags, destination.value)
     current.value.description = editDescription.value
     current.value.tags = tags
     editing.value = false
@@ -158,7 +197,7 @@ async function removeImage() {
   if (!current.value) return
   actionError.value = ''
   try {
-    await deleteImage(current.value.id)
+    await deleteImage(current.value.id, destination.value)
     current.value = null
     editing.value = false
     confirmingDelete.value = false
@@ -178,7 +217,7 @@ async function removeAllImages() {
   deletingAll.value = true
   actionError.value = ''
   try {
-    const deleted = await deleteAllImages()
+    const deleted = await deleteAllImages(destination.value)
     current.value = null
     editing.value = false
     selectedTag.value = ''
@@ -200,6 +239,8 @@ async function removeAllImages() {
 }
 
 onMounted(async () => {
+  destination.value = localStorage.getItem('photo-backup-destination') ?? ''
+  if (!destination.value) return
   try {
     await refreshResults()
   } catch (error: unknown) {

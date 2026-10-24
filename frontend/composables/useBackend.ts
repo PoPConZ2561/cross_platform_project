@@ -80,30 +80,30 @@ export function useBackend() {
   }
 
   /** Go: ListImages() []PhotoItem */
-  async function listImages(): Promise<PhotoItem[]> {
-    if (isWails) return (await app().ListImages()) ?? []
+  async function listImages(destination: string): Promise<PhotoItem[]> {
+    if (isWails) return (await app().ListImages(destination)) ?? []
     return mockPhotos
   }
-  /** Go: SearchByTag(tag string) []PhotoItem */
-  async function searchByTag(tag: string): Promise<PhotoItem[]> {
-    if (isWails) return (await app().SearchByTag(tag)) ?? []
+  /** Go: SearchByTag(tag, destination string) []PhotoItem */
+  async function searchByTag(tag: string, destination: string): Promise<PhotoItem[]> {
+    if (isWails) return (await app().SearchByTag(tag, destination)) ?? []
     return mockPhotos.filter(p => p.tags.includes(tag))
   }
-  /** Go: SearchByDescription(q string) []PhotoItem */
-  async function searchByDescription(q: string): Promise<PhotoItem[]> {
-    if (isWails) return (await app().SearchByDescription(q)) ?? []
+  /** Go: SearchByDescription(query, destination string) []PhotoItem */
+  async function searchByDescription(q: string, destination: string): Promise<PhotoItem[]> {
+    if (isWails) return (await app().SearchByDescription(q, destination)) ?? []
     return mockPhotos.filter(p => p.description.includes(q))
   }
-  /** Go: TagCloud() []TagCount */
-  async function tagCloud(): Promise<TagCount[]> {
-    if (isWails) return (await app().TagCloud()) ?? []
+  /** Go: TagCloud(destination string) []TagCount */
+  async function tagCloud(destination: string): Promise<TagCount[]> {
+    if (isWails) return (await app().TagCloud(destination)) ?? []
     const m = new Map<string, number>()
     mockPhotos.forEach(p => p.tags.forEach(t => m.set(t, (m.get(t) ?? 0) + 1)))
     return [...m].map(([name, count]) => ({ name, count }))
   }
 
-  async function updateImage(id: number, description: string, tags: string[]): Promise<void> {
-    if (isWails) return app().UpdateImage(id, description, tags)
+  async function updateImage(id: number, description: string, tags: string[], destination: string): Promise<void> {
+    if (isWails) return app().UpdateImage(id, description, tags, destination)
     const photo = mockPhotos.find(p => p.id === id)
     if (photo) {
       photo.description = description
@@ -111,14 +111,14 @@ export function useBackend() {
     }
   }
 
-  async function deleteImage(id: number): Promise<void> {
-    if (isWails) return app().DeleteImage(id)
+  async function deleteImage(id: number, destination: string): Promise<void> {
+    if (isWails) return app().DeleteImage(id, destination)
     const index = mockPhotos.findIndex(p => p.id === id)
     if (index >= 0) mockPhotos.splice(index, 1)
   }
 
-  async function deleteAllImages(): Promise<number> {
-    if (isWails) return app().DeleteAllImages()
+  async function deleteAllImages(destination: string): Promise<number> {
+    if (isWails) return app().DeleteAllImages(destination)
     const count = mockPhotos.length
     mockPhotos.splice(0, mockPhotos.length)
     return count

@@ -12,19 +12,24 @@ in SQLite, and searching the collection by description or tag.
   on macOS).
 - Photo files are copied into the selected destination, retaining their relative
   folder structure. JPEG, PNG, and GIF files are analyzed for dimensions, hashed
-  with SHA-256, and skipped when their content has already been backed up.
+  with SHA-256, and skipped when the same content already exists in that
+  destination.
 - The backup screen supports choosing a whole source folder or selecting one or
   more image files; selected files are copied directly into the destination.
 - The library supports listing, tag/description search, metadata editing, and
-  deletion of both the catalog record and its backed-up file.
+  deletion of both the catalog record and its backed-up file. The gallery
+  requires a destination folder and scopes image history, searches, tags, and
+  bulk deletion to that folder and its subfolders.
 - Image data is served through the Wails asset server at `/image/{id}`; add
   `?thumb=1` for a 400-by-300 maximum JPEG thumbnail.
 
 ## Wails API
 
-`SelectFolder`, `SelectImages`, `StartBackup`, `StartBackupFiles`, `ListImages`, `SearchByTag`,
-`SearchByDescription`, `TagCloud`, `UpdateImage`, and `DeleteImage` are exposed
-to the frontend. Backup progress is emitted as the `backup:progress` event.
+`SelectFolder`, `SelectImages`, `StartBackup`, `StartBackupFiles`, `ListImages`,
+`SearchByTag`, `SearchByDescription`, `TagCloud`, `UpdateImage`, `DeleteImage`,
+and `DeleteAllImages` are exposed to the frontend. Gallery history, tag search,
+description search, and bulk deletion all require a destination-folder argument.
+Backup progress is emitted as the `backup:progress` event.
 
 The browser-only Nuxt mode uses mock data; use `wails dev` to exercise the Go
 backend and native folder picker.

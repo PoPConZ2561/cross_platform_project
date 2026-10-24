@@ -34,6 +34,8 @@ p { margin: 0; }
 
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1.25rem; }
 .row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+.destination-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.destination-heading h2 { margin-bottom: .25rem; }
 
 button, input, textarea { font: inherit; }
 button {

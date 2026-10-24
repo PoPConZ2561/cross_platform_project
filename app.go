@@ -110,72 +110,78 @@ func (a *App) StartBackupFiles(files []string, dst string) (model.BackupResult, 
 	})
 }
 
-func (a *App) ListImages() ([]model.PhotoItem, error) {
-	records, err := a.listRecords()
-	if err != nil {
+func (a *App) ListImages(destination string) ([]model.PhotoItem, error) {
+	if err := a.ready(); err != nil {
 		return nil, err
+	}
+	records, err := a.repo.ListInFolder(destination)
+	if err != nil {
+		return nil, fmt.Errorf("list images in destination folder: %w", err)
 	}
 	return photoItems(records), nil
 }
 
-func (a *App) SearchByTag(tag string) ([]model.PhotoItem, error) {
+func (a *App) SearchByTag(tag, destination string) ([]model.PhotoItem, error) {
 	if err := a.ready(); err != nil {
 		return nil, err
 	}
-	records, err := a.repo.FindByTag(strings.TrimSpace(tag))
+	records, err := a.repo.FindByTagInFolder(strings.TrimSpace(tag), destination)
 	if err != nil {
 		return nil, fmt.Errorf("search images by tag: %w", err)
 	}
 	return photoItems(records), nil
 }
 
-func (a *App) SearchByDescription(query string) ([]model.PhotoItem, error) {
+func (a *App) SearchByDescription(query, destination string) ([]model.PhotoItem, error) {
 	if err := a.ready(); err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(destination) == "" {
+		return nil, errors.New("destination folder is required")
 	}
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return []model.PhotoItem{}, nil
 	}
-	records, err := a.repo.SearchDescription(query)
+	records, err := a.repo.SearchDescriptionInFolder(query, destination)
 	if err != nil {
 		return nil, fmt.Errorf("search image descriptions: %w", err)
 	}
 	return photoItems(records), nil
 }
 
-func (a *App) TagCloud() ([]model.TagCount, error) {
+func (a *App) TagCloud(destination string) ([]model.TagCount, error) {
 	if err := a.ready(); err != nil {
 		return nil, err
 	}
-	tags, err := a.repo.TagCloud()
+	tags, err := a.repo.TagCloudInFolder(destination)
 	if err != nil {
 		return nil, fmt.Errorf("load image tags: %w", err)
 	}
 	return tags, nil
 }
 
-func (a *App) UpdateImage(id uint, description string, tags []string) error {
+func (a *App) UpdateImage(id uint, description string, tags []string, destination string) error {
 	if err := a.ready(); err != nil {
 		return err
 	}
 	if id == 0 {
 		return errors.New("image id must be greater than zero")
 	}
-	if err := a.repo.UpdateMetadata(id, description, tags); err != nil {
+	if err := a.repo.UpdateMetadataInFolder(id, description, tags, destination); err != nil {
 		return fmt.Errorf("update image metadata: %w", err)
 	}
 	return nil
 }
 
-func (a *App) DeleteImage(id uint) error {
+func (a *App) DeleteImage(id uint, destination string) error {
 	if err := a.ready(); err != nil {
 		return err
 	}
 	if id == 0 {
 		return errors.New("image id must be greater than zero")
 	}
-	record, err := a.repo.Delete(id)
+	record, err := a.repo.DeleteInFolder(id, destination)
 	if err != nil {
 		return fmt.Errorf("delete image record: %w", err)
 	}
@@ -185,11 +191,11 @@ func (a *App) DeleteImage(id uint) error {
 	return nil
 }
 
-func (a *App) DeleteAllImages() (int, error) {
+func (a *App) DeleteAllImages(destination string) (int, error) {
 	if err := a.ready(); err != nil {
 		return 0, err
 	}
-	return a.backup.DeleteAll()
+	return a.backup.DeleteAllInFolder(destination)
 }
 
 func (a *App) ImageHandler() http.Handler {
@@ -308,17 +314,6 @@ func (a *App) ready() error {
 		return errors.New("application database is not initialized")
 	}
 	return nil
-}
-
-func (a *App) listRecords() ([]model.BackupRecord, error) {
-	if err := a.ready(); err != nil {
-		return nil, err
-	}
-	records, err := a.repo.List()
-	if err != nil {
-		return nil, fmt.Errorf("list backed-up images: %w", err)
-	}
-	return records, nil
 }
 
 func photoItems(records []model.BackupRecord) []model.PhotoItem {

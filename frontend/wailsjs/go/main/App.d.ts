@@ -5,9 +5,9 @@ import {model} from '../models';
 
 export function ConfirmDelete(arg1:string):Promise<boolean>;
 
-export function DeleteAllImages():Promise<number>;
+export function DeleteAllImages(arg1:string):Promise<number>;
 
-export function DeleteImage(arg1:number):Promise<void>;
+export function DeleteImage(arg1:number,arg2:string):Promise<void>;
 
 export function Greet(arg1:string):Promise<string>;
 
@@ -15,11 +15,11 @@ export function ImageHandler():Promise<http.Handler>;
 
 export function ImageMiddleware():Promise<any>;
 
-export function ListImages():Promise<Array<model.PhotoItem>>;
+export function ListImages(arg1:string):Promise<Array<model.PhotoItem>>;
 
-export function SearchByDescription(arg1:string):Promise<Array<model.PhotoItem>>;
+export function SearchByDescription(arg1:string,arg2:string):Promise<Array<model.PhotoItem>>;
 
-export function SearchByTag(arg1:string):Promise<Array<model.PhotoItem>>;
+export function SearchByTag(arg1:string,arg2:string):Promise<Array<model.PhotoItem>>;
 
 export function SelectFolder(arg1:string):Promise<string>;
 
@@ -29,6 +29,6 @@ export function StartBackup(arg1:string,arg2:string):Promise<model.BackupResult>
 
 export function StartBackupFiles(arg1:Array<string>,arg2:string):Promise<model.BackupResult>;
 
-export function TagCloud():Promise<Array<model.TagCount>>;
+export function TagCloud(arg1:string):Promise<Array<model.TagCount>>;
 
-export function UpdateImage(arg1:number,arg2:string,arg3:Array<string>):Promise<void>;
+export function UpdateImage(arg1:number,arg2:string,arg3:Array<string>,arg4:string):Promise<void>;
