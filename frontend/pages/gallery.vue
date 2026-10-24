@@ -19,7 +19,15 @@
     </form>
   </section>
 
-  <h2>{{ heading }}</h2>
+  <div class="gallery-heading">
+    <h2>{{ heading }}</h2>
+    <button
+      v-if="totalImages > 0"
+      class="danger"
+      :disabled="loading || deletingAll"
+      @click="removeAllImages"
+    >{{ deletingAll ? 'กำลังลบรูปทั้งหมด…' : `ลบรูปทั้งหมด (${totalImages})` }}</button>
+  </div>
   <p v-if="!current && actionError" class="err">{{ actionError }}</p>
   <p v-if="loading" class="empty">กำลังโหลด…</p>
   <ImageGrid v-else :items="photos" :empty-text="emptyText" @open="current = $event" />
@@ -57,7 +65,7 @@
 
 <script setup lang="ts">
 import type { PhotoItem, TagCount } from '~/composables/useBackend'
-const { listImages, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, imageUrl } = useBackend()
+const { listImages, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, deleteAllImages, imageUrl } = useBackend()
 
 const mode = ref<'tag' | 'desc'>('tag')
 const tags = ref<TagCount[]>([])
@@ -72,6 +80,8 @@ const saving = ref(false)
 const actionError = ref('')
 const editDescription = ref('')
 const editTags = ref('')
+const totalImages = ref(0)
+const deletingAll = ref(false)
 
 const heading = computed(() =>
   mode.value === 'tag' && selectedTag.value ? `รูปที่มี Tag “${selectedTag.value}” (${photos.value.length})`
@@ -111,13 +121,15 @@ function beginEdit() {
 }
 
 async function refreshResults() {
+  const allImages = await listImages()
+  totalImages.value = allImages.length
   tags.value = await tagCloud()
   if (selectedTag.value) {
     await load(() => searchByTag(selectedTag.value))
   } else if (mode.value === 'desc' && searched.value && query.value.trim()) {
     await load(() => searchByDescription(query.value.trim()))
   } else {
-    await load(listImages)
+    photos.value = allImages
   }
 }
 
@@ -149,6 +161,37 @@ async function removeImage() {
     await refreshResults()
   } catch (error: unknown) {
     actionError.value = `ลบรูปไม่สำเร็จ: ${String(error)}`
+  }
+}
+
+async function removeAllImages() {
+  if (totalImages.value === 0 || deletingAll.value) return
+  const confirmed = window.confirm(
+    `ยืนยันลบรูปทั้งหมด ${totalImages.value} รูป รวมถึงไฟล์สำรองถาวรหรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับได้`
+  )
+  if (!confirmed) return
+
+  deletingAll.value = true
+  actionError.value = ''
+  try {
+    const deleted = await deleteAllImages()
+    current.value = null
+    editing.value = false
+    selectedTag.value = ''
+    query.value = ''
+    searched.value = false
+    mode.value = 'tag'
+    await refreshResults()
+    actionError.value = `ลบรูปและไฟล์สำรองแล้ว ${deleted} รูป`
+  } catch (error: unknown) {
+    actionError.value = `ลบรูปทั้งหมดไม่สำเร็จ: ${String(error)}`
+    try {
+      await refreshResults()
+    } catch (refreshError: unknown) {
+      actionError.value += ` (และโหลดรายการใหม่ไม่สำเร็จ: ${String(refreshError)})`
+    }
+  } finally {
+    deletingAll.value = false
   }
 }
 

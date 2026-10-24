@@ -133,6 +133,26 @@ func (r *BackupRepository) Delete(id uint) (model.BackupRecord, error) {
 	return record, err
 }
 
+func (r *BackupRepository) DeleteAll() ([]model.BackupRecord, error) {
+	records, err := r.List()
+	if err != nil {
+		return nil, err
+	}
+	err = r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM record_tags").Error; err != nil {
+			return err
+		}
+		if err := tx.Where("1 = 1").Delete(&model.BackupRecord{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("1 = 1").Delete(&model.Tag{}).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
 func removeUnusedTags(tx *gorm.DB) error {
 	return tx.Where("NOT EXISTS (?)",
 		tx.Model(&model.BackupRecord{}).

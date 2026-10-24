@@ -3,6 +3,10 @@
 import {http} from '../models';
 import {model} from '../models';
 
+export function ConfirmDelete(arg1:string):Promise<boolean>;
+
+export function DeleteAllImages():Promise<number>;
+
 export function DeleteImage(arg1:number):Promise<void>;
 
 export function Greet(arg1:string):Promise<string>;

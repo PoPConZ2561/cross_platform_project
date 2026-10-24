@@ -10,6 +10,7 @@ func TestBackupRepositoryMetadataLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatal(err)
@@ -62,5 +63,43 @@ func TestBackupRepositoryMetadataLifecycle(t *testing.T) {
 	tags, err = repo.TagCloud()
 	if err != nil || len(tags) != 0 {
 		t.Fatalf("TagCloud() after delete = %#v, %v; want no orphan tags", tags, err)
+	}
+}
+
+func TestBackupRepositoryDeleteAllRemovesRecordsAndTags(t *testing.T) {
+	db, err := InitDatabase(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+
+	repo := NewBackupRepository(db)
+	for _, record := range []model.BackupRecord{
+		{FileName: "one.jpg", FileHash: "one", Tags: []model.Tag{{Name: "travel"}}},
+		{FileName: "two.jpg", FileHash: "two", Tags: []model.Tag{{Name: "family"}}},
+	} {
+		if err := repo.Create(&record); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	deleted, err := repo.DeleteAll()
+	if err != nil {
+		t.Fatalf("DeleteAll(): %v", err)
+	}
+	if len(deleted) != 2 {
+		t.Fatalf("DeleteAll() returned %d records; want 2", len(deleted))
+	}
+	records, err := repo.List()
+	if err != nil || len(records) != 0 {
+		t.Fatalf("List() after DeleteAll() = %d records, %v; want none", len(records), err)
+	}
+	tags, err := repo.TagCloud()
+	if err != nil || len(tags) != 0 {
+		t.Fatalf("TagCloud() after DeleteAll() = %#v, %v; want no orphan tags", tags, err)
 	}
 }

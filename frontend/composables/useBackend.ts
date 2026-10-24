@@ -117,10 +117,17 @@ export function useBackend() {
     if (index >= 0) mockPhotos.splice(index, 1)
   }
 
+  async function deleteAllImages(): Promise<number> {
+    if (isWails) return app().DeleteAllImages()
+    const count = mockPhotos.length
+    mockPhotos.splice(0, mockPhotos.length)
+    return count
+  }
+
   /** URL รูป: Wails ให้ AssetServer Handler ฝั่ง Go เสิร์ฟที่ /image/{id}?thumb=1 */
   function imageUrl(id: number, thumb = true): string {
     return isWails ? `/image/${id}${thumb ? '?thumb=1' : ''}` : mockUrl(id)
   }
 
-  return { isWails, pickFolder, pickImages, startBackup, startSelectedBackup, onProgress, listImages, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, imageUrl }
+  return { isWails, pickFolder, pickImages, startBackup, startSelectedBackup, onProgress, listImages, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, deleteAllImages, imageUrl }
 }

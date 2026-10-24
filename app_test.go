@@ -95,6 +95,41 @@ func TestImageMiddlewareHandlesImagesBeforeFrontendFallback(t *testing.T) {
 	}
 }
 
+func TestImageHandlerFallsBackToOriginalWhenBackupIsMissing(t *testing.T) {
+	root := t.TempDir()
+	sourcePath := filepath.Join(root, "original.jpg")
+	writeJPEG(t, sourcePath)
+
+	db, err := repository.InitDatabase(filepath.Join(root, "database"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	repo := repository.NewBackupRepository(db)
+	if err := repo.Create(&model.BackupRecord{
+		FileName:   "original.jpg",
+		SourcePath: sourcePath,
+		DestPath:   filepath.Join(root, "missing-backup.jpg"),
+		FileHash:   "missing-backup-test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{db: db, repo: repo, backup: service.NewBackupService(repo)}
+
+	response := httptest.NewRecorder()
+	app.ImageHandler().ServeHTTP(response, httptest.NewRequest("GET", "/image/1?thumb=1", nil))
+	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("fallback response = status %d, content type %q; want JPEG", response.Code, response.Header().Get("Content-Type"))
+	}
+	if _, _, err := image.Decode(response.Body); err != nil {
+		t.Fatalf("fallback returned invalid image data: %v", err)
+	}
+}
+
 func writeJPEG(t *testing.T, path string) {
 	t.Helper()
 	file, err := os.Create(path)

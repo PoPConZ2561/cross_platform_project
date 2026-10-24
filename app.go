@@ -185,6 +185,13 @@ func (a *App) DeleteImage(id uint) error {
 	return nil
 }
 
+func (a *App) DeleteAllImages() (int, error) {
+	if err := a.ready(); err != nil {
+		return 0, err
+	}
+	return a.backup.DeleteAll()
+}
+
 func (a *App) ImageHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodGet {
@@ -211,12 +218,38 @@ func (a *App) ImageHandler() http.Handler {
 			http.Error(w, "image service failed", http.StatusInternalServerError)
 			return
 		}
-		if request.URL.Query().Get("thumb") == "1" {
-			a.serveThumbnail(w, record.DestPath)
+		imagePath, err := imagePathForRecord(record)
+		if err != nil {
+			log.Printf("find image file for record %d: %v", id, err)
+			http.Error(w, "image file unavailable", http.StatusNotFound)
 			return
 		}
-		http.ServeFile(w, request, record.DestPath)
+		if request.URL.Query().Get("thumb") == "1" {
+			a.serveThumbnail(w, imagePath)
+			return
+		}
+		http.ServeFile(w, request, imagePath)
 	})
+}
+
+func imagePathForRecord(record model.BackupRecord) (string, error) {
+	for _, candidate := range []string{record.DestPath, record.SourcePath} {
+		if candidate == "" {
+			continue
+		}
+		info, err := os.Stat(candidate)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return "", fmt.Errorf("inspect %q: %w", candidate, err)
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		return candidate, nil
+	}
+	return "", fmt.Errorf("backup file %q and source file %q are both unavailable", record.DestPath, record.SourcePath)
 }
 
 func (a *App) ImageMiddleware() func(http.Handler) http.Handler {

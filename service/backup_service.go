@@ -22,6 +22,59 @@ func NewBackupService(repo *repository.BackupRepository) *BackupService {
 	return &BackupService{repo: repo}
 }
 
+func (s *BackupService) DeleteAll() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	records, err := s.repo.List()
+	if err != nil {
+		return 0, fmt.Errorf("list images before deleting all: %w", err)
+	}
+	paths := make(map[string]struct{}, len(records))
+	var fileErrors []string
+	for _, record := range records {
+		if record.DestPath == "" {
+			fileErrors = append(fileErrors, fmt.Sprintf("image %q has no backup path", record.FileName))
+			continue
+		}
+		path, err := filepath.Abs(filepath.Clean(record.DestPath))
+		if err != nil {
+			fileErrors = append(fileErrors, fmt.Sprintf("%s: resolve backup path: %v", record.FileName, err))
+			continue
+		}
+		key := strings.ToLower(filepath.Clean(path))
+		if _, exists := paths[key]; exists {
+			continue
+		}
+		paths[key] = struct{}{}
+
+		info, err := os.Lstat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			fileErrors = append(fileErrors, fmt.Sprintf("%s: inspect backup file: %v", record.FileName, err))
+			continue
+		}
+		if !info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
+			fileErrors = append(fileErrors, fmt.Sprintf("%s: backup path is not a file", record.FileName))
+			continue
+		}
+		if err := os.Remove(path); err != nil {
+			fileErrors = append(fileErrors, fmt.Sprintf("%s: delete backup file: %v", record.FileName, err))
+		}
+	}
+	if len(fileErrors) > 0 {
+		return 0, fmt.Errorf("some backup files could not be deleted; image records were kept so you can retry: %s", strings.Join(fileErrors, "; "))
+	}
+
+	deleted, err := s.repo.DeleteAll()
+	if err != nil {
+		return 0, fmt.Errorf("backup files were removed, but deleting image records failed: %w", err)
+	}
+	return len(deleted), nil
+}
+
 func (s *BackupService) Run(src, dst string, progress func(model.BackupProgress)) (model.BackupResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

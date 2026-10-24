@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cross_platform_project/model"
 	"cross_platform_project/repository"
 	"image"
 	"image/color"
@@ -142,6 +143,52 @@ func TestRunSelectedCopiesOneOrManyImages(t *testing.T) {
 	records, err := repo.List()
 	if err != nil || len(records) != 2 {
 		t.Fatalf("stored records = %d, %v; want two", len(records), err)
+	}
+}
+
+func TestDeleteAllRemovesBackupFilesAndRecords(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join(root, "destination")
+	if err := os.MkdirAll(destination, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := repository.InitDatabase(filepath.Join(root, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	repo := repository.NewBackupRepository(db)
+	for i, name := range []string{"one.jpg", "two.jpg"} {
+		path := filepath.Join(destination, name)
+		writeTestJPEGVariant(t, path, uint8(100+i))
+		if err := repo.Create(&model.BackupRecord{
+			FileName: name, DestPath: path, FileHash: name,
+			Tags: []model.Tag{{Name: "test"}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	deleted, err := NewBackupService(repo).DeleteAll()
+	if err != nil {
+		t.Fatalf("DeleteAll(): %v", err)
+	}
+	if deleted != 2 {
+		t.Fatalf("DeleteAll() returned %d; want 2", deleted)
+	}
+	for _, name := range []string{"one.jpg", "two.jpg"} {
+		if _, err := os.Stat(filepath.Join(destination, name)); !os.IsNotExist(err) {
+			t.Errorf("backup file %s still exists or returned unexpected error: %v", name, err)
+		}
+	}
+	records, err := repo.List()
+	if err != nil || len(records) != 0 {
+		t.Fatalf("List() after DeleteAll() = %d records, %v; want none", len(records), err)
 	}
 }
 
