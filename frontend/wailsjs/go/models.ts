@@ -22,6 +22,7 @@ export namespace model {
 	}
 	export class CopyResult {
 	    copied: number;
+	    skipped: number;
 	    failed: number;
 	    target: string;
 	    errors: string[];
@@ -33,6 +34,7 @@ export namespace model {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.copied = source["copied"];
+	        this.skipped = source["skipped"];
 	        this.failed = source["failed"];
 	        this.target = source["target"];
 	        this.errors = source["errors"];

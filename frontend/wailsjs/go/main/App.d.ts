@@ -21,6 +21,8 @@ export function ImageMiddleware():Promise<any>;
 
 export function ListImages(arg1:string):Promise<Array<model.PhotoItem>>;
 
+export function MoveImages(arg1:Array<number>,arg2:string,arg3:string):Promise<model.CopyResult>;
+
 export function SearchByDescription(arg1:string,arg2:string):Promise<Array<model.PhotoItem>>;
 
 export function SearchByTag(arg1:string,arg2:string):Promise<Array<model.PhotoItem>>;

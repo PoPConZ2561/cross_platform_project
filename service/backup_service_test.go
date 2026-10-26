@@ -476,3 +476,86 @@ func TestCopyToFolderCopiesSelectedImagesWithUniqueNames(t *testing.T) {
 		t.Fatal("copying into the backup folder itself must be rejected")
 	}
 }
+
+func TestMoveToFolderMovesFilesAndUpdatesRecords(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join(root, "destination")
+	target := filepath.Join(root, "other-backup")
+	for _, folder := range []string{destination, target} {
+		if err := os.MkdirAll(folder, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db, err := repository.InitDatabase(filepath.Join(root, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	repo := repository.NewBackupRepository(db)
+	var ids []uint
+	for i, name := range []string{"one.jpg", "two.jpg", "dup.jpg"} {
+		path := filepath.Join(destination, name)
+		writeTestJPEGVariant(t, path, uint8(30+i))
+		record := model.BackupRecord{FileName: name, DestPath: path, FileHash: name,
+			Tags: []model.Tag{{Name: "move"}}}
+		if err := repo.Create(&record); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, record.ID)
+	}
+	// ปลายทางมีรูป hash "dup.jpg" อยู่แล้ว -> ต้องข้าม
+	dupInTarget := filepath.Join(target, "already.jpg")
+	writeTestJPEGVariant(t, dupInTarget, 200)
+	if err := repo.Create(&model.BackupRecord{FileName: "already.jpg", DestPath: dupInTarget, FileHash: "dup.jpg"}); err != nil {
+		t.Fatal(err)
+	}
+	// ชื่อซ้ำในปลายทาง (คนละรูป) -> ต้องตั้งชื่อใหม่ ไม่เขียนทับ
+	if err := os.WriteFile(filepath.Join(target, "one.jpg"), []byte("keep me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := NewBackupService(repo)
+	result, err := svc.MoveToFolder(ids, destination, target)
+	if err != nil {
+		t.Fatalf("MoveToFolder(): %v", err)
+	}
+	if result.Copied != 2 || result.Skipped != 1 || result.Failed != 0 {
+		t.Fatalf("MoveToFolder() = %#v; want 2 moved, 1 skipped", result)
+	}
+	for _, name := range []string{"one.jpg", "two.jpg"} {
+		if _, err := os.Stat(filepath.Join(destination, name)); !os.IsNotExist(err) {
+			t.Errorf("%s should have left the old backup folder: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(destination, "dup.jpg")); err != nil {
+		t.Errorf("skipped duplicate must stay in place: %v", err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(target, "one.jpg")); string(data) != "keep me" {
+		t.Fatal("existing file in target folder was overwritten")
+	}
+	moved, err := repo.ListInFolder(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, record := range moved {
+		names[record.FileName] = true
+		if _, err := os.Stat(record.DestPath); err != nil {
+			t.Errorf("record %s points to missing file %s", record.FileName, record.DestPath)
+		}
+	}
+	if !names["one (1).jpg"] || !names["two.jpg"] {
+		t.Fatalf("records in target after move = %v; want one (1).jpg and two.jpg", names)
+	}
+	left, err := repo.ListInFolder(destination)
+	if err != nil || len(left) != 1 || left[0].FileName != "dup.jpg" {
+		t.Fatalf("records left in old folder = %#v, %v; want only dup.jpg", left, err)
+	}
+	if _, err := svc.MoveToFolder(ids, destination, filepath.Join(destination, "sub")); err == nil {
+		t.Fatal("moving into a folder inside the backup folder must be rejected")
+	}
+}

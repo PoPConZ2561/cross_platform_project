@@ -189,6 +189,19 @@ func (r *BackupRepository) FindByIDsInFolder(ids []uint, folder string) ([]model
 	return ordered, nil
 }
 
+// UpdateLocation บันทึกตำแหน่งไฟล์ใหม่หลังย้ายรูปไปโฟลเดอร์อื่น
+func (r *BackupRepository) UpdateLocation(id uint, destPath, fileName string) error {
+	result := r.db.Model(&model.BackupRecord{}).Where("id = ?", id).
+		Updates(map[string]interface{}{"dest_path": destPath, "file_name": fileName})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 func (r *BackupRepository) FindByID(id uint) (model.BackupRecord, error) {
 	var record model.BackupRecord
 	err := r.db.Preload("Tags").First(&record, id).Error

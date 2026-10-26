@@ -52,6 +52,9 @@
       <button v-if="photos.length > 0" class="ghost" :disabled="loading || deletingAll || copying"
         @click="copyImagesToFolder(photos.map(p => p.id))">{{
         copying ? 'กำลังคัดลอก…' : `คัดลอกที่แสดงอยู่ไปโฟลเดอร์อื่น (${photos.length})` }}</button>
+      <button v-if="photos.length > 0" class="ghost" :disabled="loading || deletingAll || copying || moving"
+        @click="moveImagesToFolder(photos.map(p => p.id))">{{
+        moving ? 'กำลังย้าย…' : `ย้ายที่แสดงอยู่ไปโฟลเดอร์อื่น (${photos.length})` }}</button>
       <button v-if="!confirmingDeleteAll" class="danger" :disabled="loading || deletingAll || copying" @click="confirmingDeleteAll = true">{{
         deletingAll ? 'กำลังลบรูปทั้งหมด…' : `ลบรูปทั้งหมด (${totalImages})` }}</button>
       <template v-else>
@@ -90,6 +93,8 @@
           <button class="ghost" @click="beginEdit">แก้ไขข้อมูล</button>
           <button class="ghost" :disabled="copying" @click="copyImagesToFolder([current.id])">{{
             copying ? 'กำลังคัดลอก…' : 'คัดลอกไปโฟลเดอร์อื่น' }}</button>
+          <button class="ghost" :disabled="moving" @click="moveImagesToFolder([current.id])">{{
+            moving ? 'กำลังย้าย…' : 'ย้ายไปโฟลเดอร์อื่น' }}</button>
           <button v-if="!confirmingDelete" class="ghost" @click="confirmingDelete = true">ลบรูป</button>
           <template v-else>
             <button type="button" style="background:#dc2626;color:#fff" @click="removeImage">ยืนยันลบจริง</button>
@@ -105,7 +110,7 @@
 
 <script setup lang="ts">
 import type { MissingFile, PhotoItem, TagCount } from '~/composables/useBackend'
-const { pickFolder, listImages, checkDestination, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, deleteAllImages, copyImages, imageUrl } = useBackend()
+const { pickFolder, listImages, checkDestination, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, deleteAllImages, copyImages, moveImages, imageUrl } = useBackend()
 
 const mode = ref<'tag' | 'desc'>('tag')
 const destination = ref('')
@@ -126,6 +131,7 @@ const totalImages = ref(0)
 const deletingAll = ref(false)
 const confirmingDeleteAll = ref(false)
 const copying = ref(false)
+const moving = ref(false)
 const missingFiles = ref<MissingFile[]>([])
 const checkingMissing = ref(false)
 const missingCheckComplete = ref(false)
@@ -269,6 +275,29 @@ async function copyImagesToFolder(ids: number[]) {
     actionError.value = `คัดลอกรูปไม่สำเร็จ: ${String(error)}`
   } finally {
     copying.value = false
+  }
+}
+
+async function moveImagesToFolder(ids: number[]) {
+  if (!ids.length || moving.value) return
+  actionError.value = ''
+  try {
+    const target = await pickFolder('เลือกโฟลเดอร์สำรองที่จะย้ายรูปไป')
+    if (!target) return
+    moving.value = true
+    const result = await moveImages(ids, destination.value, target)
+    let message = `ย้าย ${result.copied} รูปไปที่ ${result.target} แล้ว`
+    if (result.skipped) message += ` · ข้าม ${result.skipped} รูปที่มีอยู่แล้วในปลายทาง`
+    if (result.failed) message += ` · ไม่สำเร็จ ${result.failed} รูป: ${result.errors.join('; ')}`
+    current.value = null
+    editing.value = false
+    confirmingDelete.value = false
+    await refreshResults(true)
+    actionError.value = message
+  } catch (error: unknown) {
+    actionError.value = `ย้ายรูปไม่สำเร็จ: ${String(error)}`
+  } finally {
+    moving.value = false
   }
 }
 

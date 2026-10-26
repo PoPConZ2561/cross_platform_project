@@ -38,6 +38,10 @@ export function ListImages(arg1) {
   return window['go']['main']['App']['ListImages'](arg1);
 }
 
+export function MoveImages(arg1, arg2, arg3) {
+  return window['go']['main']['App']['MoveImages'](arg1, arg2, arg3);
+}
+
 export function SearchByDescription(arg1, arg2) {
   return window['go']['main']['App']['SearchByDescription'](arg1, arg2);
 }

@@ -198,6 +198,126 @@ func (s *BackupService) CopyToFolder(ids []uint, folder, target string) (model.C
 	return result, nil
 }
 
+// MoveToFolder ย้ายไฟล์รูปที่สำรองไว้ (ตาม id) ไปยังโฟลเดอร์สำรองอื่น และอัปเดตตำแหน่งในฐานข้อมูล
+// (Tag และคำอธิบายจึงตามไปด้วย) รูปที่ปลายทางมีอยู่แล้ว (hash ซ้ำ) จะถูกข้ามและอยู่ที่เดิม
+func (s *BackupService) MoveToFolder(ids []uint, folder, target string) (model.CopyResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := model.CopyResult{Errors: []string{}}
+	if len(ids) == 0 {
+		return result, errors.New("no images selected")
+	}
+	if strings.TrimSpace(folder) == "" || strings.TrimSpace(target) == "" {
+		return result, errors.New("backup folder and move target folder are required")
+	}
+	folder, err := filepath.Abs(filepath.Clean(folder))
+	if err != nil {
+		return result, fmt.Errorf("resolve backup folder: %w", err)
+	}
+	target, err = filepath.Abs(filepath.Clean(target))
+	if err != nil {
+		return result, fmt.Errorf("resolve move target folder: %w", err)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return result, fmt.Errorf("open move target folder: %w", err)
+	}
+	if !info.IsDir() {
+		return result, errors.New("move target is not a folder")
+	}
+	if pathsOverlap(folder, target) {
+		return result, errors.New("move target must not be the backup folder, a folder inside it, or a folder that contains it")
+	}
+	result.Target = target
+
+	records, err := s.repo.FindByIDsInFolder(ids, folder)
+	if err != nil {
+		return result, fmt.Errorf("find selected images: %w", err)
+	}
+	if missing := len(ids) - len(records); missing > 0 {
+		result.Failed += missing
+		result.Errors = append(result.Errors, fmt.Sprintf("%d image(s) were not found in this backup folder", missing))
+	}
+	for _, record := range records {
+		if record.FileHash != "" {
+			exists, err := s.repo.ExistsHashInFolder(record.FileHash, target)
+			if err != nil {
+				result.Failed++
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: check duplicate in target: %v", record.FileName, err))
+				continue
+			}
+			if exists {
+				result.Skipped++
+				continue
+			}
+		}
+		name := filepath.Base(record.FileName)
+		if name == "." || name == string(filepath.Separator) || name == "" {
+			name = filepath.Base(record.DestPath)
+		}
+		newPath, err := moveWithUniqueName(record.DestPath, target, name)
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", record.FileName, err))
+			continue
+		}
+		if err := s.repo.UpdateLocation(record.ID, newPath, filepath.Base(newPath)); err != nil {
+			// ย้ายไฟล์กลับที่เดิมเพื่อให้ฐานข้อมูลกับไฟล์จริงยังตรงกัน
+			if _, undoErr := moveFile(newPath, record.DestPath); undoErr != nil {
+				err = fmt.Errorf("%v (and moving the file back failed: %v)", err, undoErr)
+			}
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: update database: %v", record.FileName, err))
+			continue
+		}
+		result.Copied++
+	}
+	return result, nil
+}
+
+func moveWithUniqueName(sourcePath, folder, name string) (string, error) {
+	extension := filepath.Ext(name)
+	base := strings.TrimSuffix(name, extension)
+	for i := 0; i < 1000; i++ {
+		candidate := name
+		if i > 0 {
+			candidate = fmt.Sprintf("%s (%d)%s", base, i, extension)
+		}
+		path, err := moveFile(sourcePath, filepath.Join(folder, candidate))
+		if err == nil {
+			return path, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return "", err
+		}
+	}
+	return "", errors.New("too many files with the same name in the target folder")
+}
+
+// moveFile ย้ายไฟล์โดยไม่เขียนทับไฟล์ที่มีอยู่ ถ้าอยู่คนละไดรฟ์ (rename ไม่ได้) จะคัดลอกแล้วลบต้นฉบับ
+func moveFile(sourcePath, targetPath string) (string, error) {
+	if _, err := os.Lstat(targetPath); err == nil {
+		return "", fmt.Errorf("destination file already exists: %w", os.ErrExist)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("inspect destination file: %w", err)
+	}
+	if _, err := os.Stat(sourcePath); err != nil {
+		return "", fmt.Errorf("open backup file: %w", err)
+	}
+	if err := os.Rename(sourcePath, targetPath); err == nil {
+		return targetPath, nil
+	}
+	if _, _, _, err := copyImage(sourcePath, targetPath); err != nil {
+		return "", err
+	}
+	if err := os.Remove(sourcePath); err != nil {
+		_ = os.Remove(targetPath)
+		return "", fmt.Errorf("remove original after copy: %w", err)
+	}
+	return targetPath, nil
+}
+
 func copyWithUniqueName(sourcePath, folder, name string) error {
 	extension := filepath.Ext(name)
 	base := strings.TrimSuffix(name, extension)

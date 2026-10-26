@@ -55,9 +55,11 @@ type MissingFile struct {
 	Path     string `json:"path"`
 }
 
+// CopyResult ใช้ทั้งการคัดลอกและการย้าย (Copied = จำนวนที่คัดลอก/ย้ายสำเร็จ)
 type CopyResult struct {
-	Copied int      `json:"copied"`
-	Failed int      `json:"failed"`
-	Target string   `json:"target"`
-	Errors []string `json:"errors"`
+	Copied  int      `json:"copied"`
+	Skipped int      `json:"skipped"`
+	Failed  int      `json:"failed"`
+	Target  string   `json:"target"`
+	Errors  []string `json:"errors"`
 }

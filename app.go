@@ -210,6 +210,14 @@ func (a *App) CopyImages(ids []uint, destination, target string) (model.CopyResu
 	return a.backup.CopyToFolder(ids, destination, target)
 }
 
+// MoveImages ย้ายรูปที่เลือก (ids) จากโฟลเดอร์สำรอง destination ไปยังโฟลเดอร์ target
+func (a *App) MoveImages(ids []uint, destination, target string) (model.CopyResult, error) {
+	if err := a.ready(); err != nil {
+		return model.CopyResult{}, err
+	}
+	return a.backup.MoveToFolder(ids, destination, target)
+}
+
 func (a *App) DeleteAllImages(destination string) (int, error) {
 	if err := a.ready(); err != nil {
 		return 0, err
