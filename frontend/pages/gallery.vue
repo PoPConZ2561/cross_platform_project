@@ -48,8 +48,14 @@
 
   <div class="gallery-heading">
     <h2>{{ heading }}</h2>
-    <button v-if="totalImages > 0" class="danger" :disabled="loading || deletingAll" @click="removeAllImages">{{
-      deletingAll ? 'กำลังลบรูปทั้งหมด…' : `ลบรูปทั้งหมด (${totalImages})` }}</button>
+    <template v-if="totalImages > 0">
+      <button v-if="!confirmingDeleteAll" class="danger" :disabled="loading || deletingAll" @click="confirmingDeleteAll = true">{{
+        deletingAll ? 'กำลังลบรูปทั้งหมด…' : `ลบรูปทั้งหมด (${totalImages})` }}</button>
+      <div v-else class="row">
+        <button type="button" class="danger" :disabled="deletingAll" @click="removeAllImages">ยืนยันลบทั้งหมด {{ totalImages }} รูป (ย้อนกลับไม่ได้)</button>
+        <button type="button" class="ghost" :disabled="deletingAll" @click="confirmingDeleteAll = false">ยกเลิก</button>
+      </div>
+    </template>
   </div>
   <p v-if="!current && actionError" class="err">{{ actionError }}</p>
   <p v-if="loading" class="empty">กำลังโหลด…</p>
@@ -113,6 +119,7 @@ const editDescription = ref('')
 const editTags = ref('')
 const totalImages = ref(0)
 const deletingAll = ref(false)
+const confirmingDeleteAll = ref(false)
 const missingFiles = ref<MissingFile[]>([])
 const checkingMissing = ref(false)
 const missingCheckComplete = ref(false)
@@ -242,11 +249,9 @@ async function removeImage() {
 }
 
 async function removeAllImages() {
+  // ไม่ใช้ window.confirm(): WebView ของ Wails บน macOS ไม่แสดงกล่องนี้และคืนค่า false ทันที
+  confirmingDeleteAll.value = false
   if (totalImages.value === 0 || deletingAll.value) return
-  const confirmed = window.confirm(
-    `ยืนยันลบรูปทั้งหมด ${totalImages.value} รูป รวมถึงไฟล์สำรองถาวรหรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับได้`
-  )
-  if (!confirmed) return
 
   deletingAll.value = true
   actionError.value = ''

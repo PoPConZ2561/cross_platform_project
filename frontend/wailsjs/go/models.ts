@@ -23,11 +23,11 @@ export namespace model {
 	export class MissingFile {
 	    fileName: string;
 	    path: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new MissingFile(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.fileName = source["fileName"];
@@ -89,3 +89,4 @@ export namespace model {
 	}
 
 }
+
