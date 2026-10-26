@@ -54,3 +54,10 @@ type MissingFile struct {
 	FileName string `json:"fileName"`
 	Path     string `json:"path"`
 }
+
+type CopyResult struct {
+	Copied int      `json:"copied"`
+	Failed int      `json:"failed"`
+	Target string   `json:"target"`
+	Errors []string `json:"errors"`
+}

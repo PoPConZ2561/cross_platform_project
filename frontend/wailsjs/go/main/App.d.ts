@@ -7,6 +7,8 @@ export function CheckDestination(arg1:string):Promise<Array<model.MissingFile>>;
 
 export function ConfirmDelete(arg1:string):Promise<boolean>;
 
+export function CopyImages(arg1:Array<number>,arg2:string,arg3:string):Promise<model.CopyResult>;
+
 export function DeleteAllImages(arg1:string):Promise<number>;
 
 export function DeleteImage(arg1:number,arg2:string):Promise<void>;

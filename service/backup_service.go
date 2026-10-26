@@ -141,6 +141,82 @@ func (s *BackupService) DeleteAllInFolder(folder string) (int, error) {
 	return len(deleted), nil
 }
 
+// CopyToFolder คัดลอกไฟล์รูปที่สำรองไว้ (ตาม id) ออกไปยังโฟลเดอร์ target
+// ถ้าชื่อไฟล์ซ้ำในปลายทางจะตั้งชื่อใหม่เป็น "ชื่อ (1).jpg" โดยไม่เขียนทับไฟล์เดิม
+func (s *BackupService) CopyToFolder(ids []uint, folder, target string) (model.CopyResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := model.CopyResult{Errors: []string{}}
+	if len(ids) == 0 {
+		return result, errors.New("no images selected")
+	}
+	if strings.TrimSpace(folder) == "" || strings.TrimSpace(target) == "" {
+		return result, errors.New("backup folder and copy target folder are required")
+	}
+	folder, err := filepath.Abs(filepath.Clean(folder))
+	if err != nil {
+		return result, fmt.Errorf("resolve backup folder: %w", err)
+	}
+	target, err = filepath.Abs(filepath.Clean(target))
+	if err != nil {
+		return result, fmt.Errorf("resolve copy target folder: %w", err)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return result, fmt.Errorf("open copy target folder: %w", err)
+	}
+	if !info.IsDir() {
+		return result, errors.New("copy target is not a folder")
+	}
+	if relative, err := filepath.Rel(folder, target); err == nil && isWithinPath(relative) &&
+		strings.EqualFold(filepath.VolumeName(folder), filepath.VolumeName(target)) {
+		return result, errors.New("copy target must not be the backup folder or a folder inside it")
+	}
+	result.Target = target
+
+	records, err := s.repo.FindByIDsInFolder(ids, folder)
+	if err != nil {
+		return result, fmt.Errorf("find selected images: %w", err)
+	}
+	if missing := len(ids) - len(records); missing > 0 {
+		result.Failed += missing
+		result.Errors = append(result.Errors, fmt.Sprintf("%d image(s) were not found in this backup folder", missing))
+	}
+	for _, record := range records {
+		name := filepath.Base(record.FileName)
+		if name == "." || name == string(filepath.Separator) || name == "" {
+			name = filepath.Base(record.DestPath)
+		}
+		if err := copyWithUniqueName(record.DestPath, target, name); err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", record.FileName, err))
+			continue
+		}
+		result.Copied++
+	}
+	return result, nil
+}
+
+func copyWithUniqueName(sourcePath, folder, name string) error {
+	extension := filepath.Ext(name)
+	base := strings.TrimSuffix(name, extension)
+	for i := 0; i < 1000; i++ {
+		candidate := name
+		if i > 0 {
+			candidate = fmt.Sprintf("%s (%d)%s", base, i, extension)
+		}
+		_, _, _, err := copyImage(sourcePath, filepath.Join(folder, candidate))
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return err
+		}
+	}
+	return errors.New("too many files with the same name in the target folder")
+}
+
 func (s *BackupService) Run(src, dst string, progress func(model.BackupProgress)) (model.BackupResult, error) {
 	started := time.Now()
 	s.mu.Lock()

@@ -162,6 +162,33 @@ func (r *BackupRepository) BackupPathsInFolder(folder string) ([]model.BackupRec
 	return records, err
 }
 
+// FindByIDsInFolder คืนเฉพาะรูปที่อยู่ในโฟลเดอร์ปลายทางนี้ ตามลำดับ id ที่ส่งมา
+func (r *BackupRepository) FindByIDsInFolder(ids []uint, folder string) ([]model.BackupRecord, error) {
+	query, err := recordsInFolder(r.db, folder)
+	if err != nil {
+		return nil, err
+	}
+	records := make([]model.BackupRecord, 0, len(ids))
+	if len(ids) == 0 {
+		return records, nil
+	}
+	if err := query.Where("id IN ?", ids).Find(&records).Error; err != nil {
+		return nil, err
+	}
+	byID := make(map[uint]model.BackupRecord, len(records))
+	for _, record := range records {
+		byID[record.ID] = record
+	}
+	ordered := make([]model.BackupRecord, 0, len(records))
+	for _, id := range ids {
+		if record, ok := byID[id]; ok {
+			ordered = append(ordered, record)
+			delete(byID, id)
+		}
+	}
+	return ordered, nil
+}
+
 func (r *BackupRepository) FindByID(id uint) (model.BackupRecord, error) {
 	var record model.BackupRecord
 	err := r.db.Preload("Tags").First(&record, id).Error

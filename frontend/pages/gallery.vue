@@ -48,14 +48,17 @@
 
   <div class="gallery-heading">
     <h2>{{ heading }}</h2>
-    <template v-if="totalImages > 0">
-      <button v-if="!confirmingDeleteAll" class="danger" :disabled="loading || deletingAll" @click="confirmingDeleteAll = true">{{
+    <div v-if="totalImages > 0" class="row">
+      <button v-if="photos.length > 0" class="ghost" :disabled="loading || deletingAll || copying"
+        @click="copyImagesToFolder(photos.map(p => p.id))">{{
+        copying ? 'กำลังคัดลอก…' : `คัดลอกที่แสดงอยู่ไปโฟลเดอร์อื่น (${photos.length})` }}</button>
+      <button v-if="!confirmingDeleteAll" class="danger" :disabled="loading || deletingAll || copying" @click="confirmingDeleteAll = true">{{
         deletingAll ? 'กำลังลบรูปทั้งหมด…' : `ลบรูปทั้งหมด (${totalImages})` }}</button>
-      <div v-else class="row">
+      <template v-else>
         <button type="button" class="danger" :disabled="deletingAll" @click="removeAllImages">ยืนยันลบทั้งหมด {{ totalImages }} รูป (ย้อนกลับไม่ได้)</button>
         <button type="button" class="ghost" :disabled="deletingAll" @click="confirmingDeleteAll = false">ยกเลิก</button>
-      </div>
-    </template>
+      </template>
+    </div>
   </div>
   <p v-if="!current && actionError" class="err">{{ actionError }}</p>
   <p v-if="loading" class="empty">กำลังโหลด…</p>
@@ -85,6 +88,8 @@
         <p v-if="!editing && actionError" class="err">{{ actionError }}</p>
         <div v-if="!editing" class="row">
           <button class="ghost" @click="beginEdit">แก้ไขข้อมูล</button>
+          <button class="ghost" :disabled="copying" @click="copyImagesToFolder([current.id])">{{
+            copying ? 'กำลังคัดลอก…' : 'คัดลอกไปโฟลเดอร์อื่น' }}</button>
           <button v-if="!confirmingDelete" class="ghost" @click="confirmingDelete = true">ลบรูป</button>
           <template v-else>
             <button type="button" style="background:#dc2626;color:#fff" @click="removeImage">ยืนยันลบจริง</button>
@@ -100,7 +105,7 @@
 
 <script setup lang="ts">
 import type { MissingFile, PhotoItem, TagCount } from '~/composables/useBackend'
-const { pickFolder, listImages, checkDestination, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, deleteAllImages, imageUrl } = useBackend()
+const { pickFolder, listImages, checkDestination, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, deleteAllImages, copyImages, imageUrl } = useBackend()
 
 const mode = ref<'tag' | 'desc'>('tag')
 const destination = ref('')
@@ -120,6 +125,7 @@ const editTags = ref('')
 const totalImages = ref(0)
 const deletingAll = ref(false)
 const confirmingDeleteAll = ref(false)
+const copying = ref(false)
 const missingFiles = ref<MissingFile[]>([])
 const checkingMissing = ref(false)
 const missingCheckComplete = ref(false)
@@ -245,6 +251,24 @@ async function removeImage() {
     await refreshResults(true)
   } catch (error: unknown) {
     actionError.value = `ลบรูปไม่สำเร็จ: ${String(error)}`
+  }
+}
+
+async function copyImagesToFolder(ids: number[]) {
+  if (!ids.length || copying.value) return
+  actionError.value = ''
+  try {
+    const target = await pickFolder('เลือกโฟลเดอร์ที่จะคัดลอกรูปไป')
+    if (!target) return
+    copying.value = true
+    const result = await copyImages(ids, destination.value, target)
+    actionError.value = result.failed
+      ? `คัดลอกแล้ว ${result.copied} รูป ไม่สำเร็จ ${result.failed} รูป: ${result.errors.join('; ')}`
+      : `คัดลอก ${result.copied} รูปไปที่ ${result.target} แล้ว`
+  } catch (error: unknown) {
+    actionError.value = `คัดลอกรูปไม่สำเร็จ: ${String(error)}`
+  } finally {
+    copying.value = false
   }
 }
 

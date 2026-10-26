@@ -415,3 +415,64 @@ func writeTestJPEGVariant(t *testing.T, path string, red uint8) {
 		t.Fatal(err)
 	}
 }
+
+func TestCopyToFolderCopiesSelectedImagesWithUniqueNames(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join(root, "destination")
+	target := filepath.Join(root, "export")
+	for _, folder := range []string{destination, target} {
+		if err := os.MkdirAll(folder, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db, err := repository.InitDatabase(filepath.Join(root, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	repo := repository.NewBackupRepository(db)
+	var ids []uint
+	for i, name := range []string{"one.jpg", "two.jpg"} {
+		path := filepath.Join(destination, name)
+		writeTestJPEGVariant(t, path, uint8(60+i))
+		record := model.BackupRecord{FileName: name, DestPath: path, FileHash: name}
+		if err := repo.Create(&record); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, record.ID)
+	}
+	// มีไฟล์ชื่อ one.jpg อยู่ในปลายทางแล้ว ต้องไม่ถูกเขียนทับ
+	existing := filepath.Join(target, "one.jpg")
+	if err := os.WriteFile(existing, []byte("keep me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := NewBackupService(repo)
+	result, err := svc.CopyToFolder(append(ids, 9999), destination, target)
+	if err != nil {
+		t.Fatalf("CopyToFolder(): %v", err)
+	}
+	if result.Copied != 2 || result.Failed != 1 {
+		t.Fatalf("CopyToFolder() = %#v; want 2 copied and 1 missing id failed", result)
+	}
+	if data, _ := os.ReadFile(existing); string(data) != "keep me" {
+		t.Fatal("existing file in target folder was overwritten")
+	}
+	for _, name := range []string{"one (1).jpg", "two.jpg"} {
+		if _, err := os.Stat(filepath.Join(target, name)); err != nil {
+			t.Errorf("expected copied file %s: %v", name, err)
+		}
+	}
+	for _, name := range []string{"one.jpg", "two.jpg"} {
+		if _, err := os.Stat(filepath.Join(destination, name)); err != nil {
+			t.Errorf("original backup %s must remain: %v", name, err)
+		}
+	}
+	if _, err := svc.CopyToFolder(ids, destination, filepath.Join(destination)); err == nil {
+		t.Fatal("copying into the backup folder itself must be rejected")
+	}
+}

@@ -10,6 +10,10 @@ export function ConfirmDelete(arg1) {
   return window['go']['main']['App']['ConfirmDelete'](arg1);
 }
 
+export function CopyImages(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CopyImages'](arg1, arg2, arg3);
+}
+
 export function DeleteAllImages(arg1) {
   return window['go']['main']['App']['DeleteAllImages'](arg1);
 }

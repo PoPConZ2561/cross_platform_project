@@ -10,6 +10,7 @@ export interface PhotoItem {
 }
 export interface TagCount { name: string; count: number }
 export interface MissingFile { fileName: string; path: string }
+export interface CopyResult { copied: number; failed: number; target: string; errors: string[] }
 export interface Progress { done: number; total: number; skipped: number; current: string }
 export interface BackupResult { copied: number; skipped: number; failed: number; durationMillis: number; errors: string[] }
 
@@ -131,10 +132,17 @@ export function useBackend() {
     return count
   }
 
+  /** คัดลอกไฟล์รูปที่เลือกไปโฟลเดอร์อื่น -> Go: CopyImages(ids []uint, destination, target string) CopyResult */
+  async function copyImages(ids: number[], destination: string, target: string): Promise<CopyResult> {
+    if (isWails) return app().CopyImages(ids, destination, target)
+    await sleep(300)
+    return { copied: ids.length, failed: 0, target, errors: [] }
+  }
+
   /** URL รูป: Wails ให้ AssetServer Handler ฝั่ง Go เสิร์ฟที่ /image/{id}?thumb=1 */
   function imageUrl(id: number, thumb = true): string {
     return isWails ? `/image/${id}${thumb ? '?thumb=1' : ''}` : mockUrl(id)
   }
 
-  return { isWails, pickFolder, pickImages, startBackup, startSelectedBackup, onProgress, listImages, checkDestination, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, deleteAllImages, imageUrl }
+  return { isWails, pickFolder, pickImages, startBackup, startSelectedBackup, onProgress, listImages, checkDestination, searchByTag, searchByDescription, tagCloud, updateImage, deleteImage, deleteAllImages, copyImages, imageUrl }
 }

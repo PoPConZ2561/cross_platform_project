@@ -20,6 +20,24 @@ export namespace model {
 	        this.errors = source["errors"];
 	    }
 	}
+	export class CopyResult {
+	    copied: number;
+	    failed: number;
+	    target: string;
+	    errors: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new CopyResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.copied = source["copied"];
+	        this.failed = source["failed"];
+	        this.target = source["target"];
+	        this.errors = source["errors"];
+	    }
+	}
 	export class MissingFile {
 	    fileName: string;
 	    path: string;
